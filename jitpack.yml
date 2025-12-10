@@ -1,0 +1,9 @@
+jdk:
+  - openjdk21
+
+before_install:
+  - sdk install kotlin
+
+install:
+  - ./gradlew clean build publishToMavenLocal -x test
+
