@@ -9,9 +9,9 @@ import org.bukkit.inventory.ItemStack
 /**
  * DSL builder for creating menus.
  */
-class MenuBuilder {
-    lateinit var title: String
-    var rows: Int = 3
+public class MenuBuilder {
+    public lateinit var title: String
+    public var rows: Int = 3
     internal val buttons = mutableMapOf<Int, Button>()
     internal val openCallbacks = mutableListOf<suspend (Menu) -> Unit>()
     internal val closeCallbacks = mutableListOf<suspend (Menu) -> Unit>()
@@ -24,7 +24,7 @@ class MenuBuilder {
     /**
      * Define a button at a specific slot.
      */
-    fun slot(
+    public fun slot(
         index: Int,
         btn: Button,
     ) {
@@ -34,7 +34,7 @@ class MenuBuilder {
     /**
      * Define a button at a specific slot with a builder.
      */
-    fun slot(
+    public fun slot(
         index: Int,
         block: SlotBuilder.() -> Unit,
     ) {
@@ -46,7 +46,7 @@ class MenuBuilder {
     /**
      * Define a button using x/y coordinates (1-indexed).
      */
-    fun slot(
+    public fun slot(
         x: Int,
         y: Int,
         block: SlotBuilder.() -> Unit,
@@ -67,7 +67,7 @@ class MenuBuilder {
      * fill { name(" ") }
      * ```
      */
-    fun fill(block: ItemBuilder.() -> Unit = {}) {
+    public fun fill(block: ItemBuilder.() -> Unit = {}) {
         fill(Material.GRAY_STAINED_GLASS_PANE, block)
     }
 
@@ -78,7 +78,7 @@ class MenuBuilder {
      * fill(Material.BLACK_STAINED_GLASS_PANE) { name(" ") }
      * ```
      */
-    fun fill(
+    public fun fill(
         material: Material,
         block: ItemBuilder.() -> Unit = {},
     ) {
@@ -101,7 +101,7 @@ class MenuBuilder {
      * }
      * ```
      */
-    fun fillSlots(
+    public fun fillSlots(
         vararg slots: Int,
         block: SlotBuilder.() -> Unit,
     ) {
@@ -118,7 +118,7 @@ class MenuBuilder {
      * fillRow(1) { item(Material.RED_STAINED_GLASS_PANE) { name(" ") } }
      * ```
      */
-    fun fillRow(
+    public fun fillRow(
         row: Int,
         block: SlotBuilder.() -> Unit,
     ) {
@@ -139,7 +139,7 @@ class MenuBuilder {
      * fillColumn(1) { item(Material.BLUE_STAINED_GLASS_PANE) { name(" ") } }
      * ```
      */
-    fun fillColumn(
+    public fun fillColumn(
         column: Int,
         block: SlotBuilder.() -> Unit,
     ) {
@@ -159,7 +159,7 @@ class MenuBuilder {
      * fillBorder(Material.WHITE_STAINED_GLASS_PANE) { name(" ") }
      * ```
      */
-    fun fillBorder(
+    public fun fillBorder(
         material: Material = Material.GRAY_STAINED_GLASS_PANE,
         block: ItemBuilder.() -> Unit = {},
     ) {
@@ -200,7 +200,7 @@ class MenuBuilder {
      * }
      * ```
      */
-    fun pattern(
+    public fun pattern(
         vararg lines: String,
         mapping: PatternMapping.() -> Unit,
     ) {
@@ -226,7 +226,7 @@ class MenuBuilder {
     // PAGINATION
     // ─────────────────────────────────────────────────────────────────────────
 
-    fun pagination(
+    public fun pagination(
         itemsPerPage: Int,
         block: suspend PaginationBuilder.() -> Unit,
     ) {
@@ -240,14 +240,14 @@ class MenuBuilder {
     /**
      * Called when menu is opened.
      */
-    fun onOpen(block: suspend (Menu) -> Unit) {
+    public fun onOpen(block: suspend (Menu) -> Unit) {
         openCallbacks.add(block)
     }
 
     /**
      * Called when menu is closed.
      */
-    fun onClose(block: suspend (Menu) -> Unit) {
+    public fun onClose(block: suspend (Menu) -> Unit) {
         closeCallbacks.add(block)
     }
 
@@ -255,7 +255,7 @@ class MenuBuilder {
     // BUILD
     // ─────────────────────────────────────────────────────────────────────────
 
-    fun build(): Menu {
+    public fun build(): Menu {
         require(title.isNotEmpty()) { "Menu title cannot be empty" }
         require(rows in 1..6) { "Menu rows must be between 1 and 6, got $rows" }
 
@@ -267,11 +267,11 @@ class MenuBuilder {
 /**
  * Builder for a single slot button.
  */
-class SlotBuilder {
+public class SlotBuilder {
     private var itemStack: ItemStack? = null
     private var clickHandler: (suspend (Player, ClickType) -> Unit)? = null
 
-    fun item(
+    public fun item(
         material: Material,
         block: ItemBuilder.() -> Unit = {},
     ) {
@@ -280,31 +280,31 @@ class SlotBuilder {
         this.itemStack = itemBuilder.build()
     }
 
-    fun item(itemStack: ItemStack) {
+    public fun item(itemStack: ItemStack) {
         this.itemStack = itemStack
     }
 
     // Accept suspend function with both parameters
-    fun onClick(handler: suspend (Player, ClickType) -> Unit) {
+    public fun onClick(handler: suspend (Player, ClickType) -> Unit) {
         this.clickHandler = handler
     }
 
     // Accept suspend function with just Player parameter
-    fun onClick(handler: suspend (Player) -> Unit) {
+    public fun onClick(handler: suspend (Player) -> Unit) {
         this.clickHandler = { player, _ -> handler(player) }
     }
 
     // Accept regular function with both parameters (auto-wrapped in coroutine)
-    fun onClickSync(handler: (Player, ClickType) -> Unit) {
+    public fun onClickSync(handler: (Player, ClickType) -> Unit) {
         this.clickHandler = { player, clickType -> handler(player, clickType) }
     }
 
     // Accept regular function with just Player parameter (auto-wrapped in coroutine)
-    fun onClickSync(handler: (Player) -> Unit) {
+    public fun onClickSync(handler: (Player) -> Unit) {
         this.clickHandler = { player, _ -> handler(player) }
     }
 
-    fun build(): Button {
+    public fun build(): Button {
         val stack = itemStack ?: ItemStack(Material.AIR)
         return Button(stack, clickHandler)
     }
@@ -314,13 +314,13 @@ class SlotBuilder {
  * Mapping for pattern-based menu layouts.
  * Maps characters to SlotBuilder configurations.
  */
-class PatternMapping {
+public class PatternMapping {
     private val mappings = mutableMapOf<Char, SlotBuilder.() -> Unit>()
 
     /**
      * Map a character to a slot builder configuration.
      */
-    infix fun Char.to(block: SlotBuilder.() -> Unit) {
+    public infix fun Char.to(block: SlotBuilder.() -> Unit) {
         mappings[this] = block
     }
 

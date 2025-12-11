@@ -17,20 +17,20 @@ import java.util.UUID
  * A button in a menu - represents an ItemStack with optional click handler.
  * Immutable once created for thread safety.
  */
-class Button(
-    val itemStack: ItemStack,
+public class Button(
+    public val itemStack: ItemStack,
     internal val clickHandler: (suspend (Player, ClickType) -> Unit)? = null,
 ) {
-    companion object {
+    public companion object {
         /**
          * Create a button with no click handler (decoration).
          */
-        fun empty(): Button = Button(ItemStack(Material.AIR))
+        public fun empty(): Button = Button(ItemStack(Material.AIR))
 
         /**
          * Create a simple decoration button.
          */
-        fun decoration(
+        public fun decoration(
             material: Material,
             name: String = " ",
         ): Button = Button(item(material) { name(name) })
@@ -39,9 +39,9 @@ class Button(
     /**
      * Check if this button has a click handler.
      */
-    fun hasClickHandler(): Boolean = clickHandler != null
+    public fun hasClickHandler(): Boolean = clickHandler != null
 
-    suspend fun invokeClick(
+    public suspend fun invokeClick(
         player: Player,
         clickType: ClickType,
     ) {
@@ -53,7 +53,7 @@ class Button(
  * DSL builder for creating ItemStacks with proper MiniMessage formatting.
  * Supports all modern Paper/Adventure features.
  */
-class ItemBuilder(
+public class ItemBuilder(
     private val material: Material,
 ) {
     private var name: Component? = null
@@ -70,49 +70,49 @@ class ItemBuilder(
     /**
      * Set the display name using MiniMessage formatting.
      */
-    fun name(text: String) {
+    public fun name(text: String) {
         this.name = text.mm()
     }
 
     /**
      * Set the display name using a Component.
      */
-    fun name(component: Component) {
+    public fun name(component: Component) {
         this.name = component
     }
 
     /**
      * Set the lore using MiniMessage formatting.
      */
-    fun lore(vararg lines: String) {
+    public fun lore(vararg lines: String) {
         this.lore = lines.map { it.mm() }.toMutableList()
     }
 
     /**
      * Set the lore using a list of strings with MiniMessage formatting.
      */
-    fun lore(lines: List<String>) {
+    public fun lore(lines: List<String>) {
         this.lore = lines.map { it.mm() }.toMutableList()
     }
 
     /**
      * Set the lore using Components.
      */
-    fun loreComponents(lines: List<Component>) {
+    public fun loreComponents(lines: List<Component>) {
         this.lore = lines.toMutableList()
     }
 
     /**
      * Add a single lore line.
      */
-    fun addLore(line: String) {
+    public fun addLore(line: String) {
         this.lore.add(line.mm())
     }
 
     /**
      * Set the stack amount.
      */
-    fun amount(count: Int) =
+    public fun amount(count: Int): ItemBuilder =
         apply {
             require(count in 1..64) { "Amount must be between 1 and 64" }
             this.amount = count
@@ -121,32 +121,33 @@ class ItemBuilder(
     /**
      * Set custom model data for resource pack textures.
      */
-    fun customModelData(data: Int) = apply { this.customModelData = data }
+    public fun customModelData(data: Int): ItemBuilder = apply { this.customModelData = data }
 
     /**
      * Add enchantment glow effect without visible enchantment.
      */
-    fun glow() = apply { this.glowing = true }
+    public fun glow(): ItemBuilder = apply { this.glowing = true }
 
     /**
      * Make the item unbreakable.
      */
-    fun unbreakable() = apply { this.unbreakable = true }
+    public fun unbreakable(): ItemBuilder = apply { this.unbreakable = true }
 
     /**
      * Add an enchantment.
      */
-    fun enchant(
+    public fun enchant(
         enchantment: Enchantment,
         level: Int = 1,
-    ) = apply {
-        this.enchantments[enchantment] = level
-    }
+    ): ItemBuilder =
+        apply {
+            this.enchantments[enchantment] = level
+        }
 
     /**
      * Add item flags to hide attributes.
      */
-    fun flags(vararg itemFlags: ItemFlag) =
+    public fun flags(vararg itemFlags: ItemFlag): ItemBuilder =
         apply {
             this.flags.addAll(itemFlags)
         }
@@ -154,7 +155,7 @@ class ItemBuilder(
     /**
      * Hide all item attributes (enchants, attributes, etc).
      */
-    fun hideAttributes() =
+    public fun hideAttributes(): ItemBuilder =
         apply {
             this.flags.addAll(ItemFlag.entries)
         }
@@ -162,7 +163,7 @@ class ItemBuilder(
     /**
      * Set skull owner for PLAYER_HEAD material.
      */
-    fun skullOwner(uuid: UUID) =
+    public fun skullOwner(uuid: UUID): ItemBuilder =
         apply {
             this.skullOwner = uuid
         }
@@ -170,7 +171,7 @@ class ItemBuilder(
     /**
      * Set skull owner for PLAYER_HEAD material by player.
      */
-    fun skullOwner(player: Player) =
+    public fun skullOwner(player: Player): ItemBuilder =
         apply {
             this.skullOwner = player.uniqueId
         }
@@ -178,27 +179,29 @@ class ItemBuilder(
     /**
      * Store persistent data on the item (survives server restarts).
      */
-    fun persistentData(
+    public fun persistentData(
         key: String,
         value: String,
-    ) = apply {
-        this.persistentData[key] = value
-    }
+    ): ItemBuilder =
+        apply {
+            this.persistentData[key] = value
+        }
 
     /**
      * Store persistent data on the item (survives server restarts).
      */
-    fun persistentData(
+    public fun persistentData(
         key: String,
         value: Int,
-    ) = apply {
-        this.persistentData[key] = value
-    }
+    ): ItemBuilder =
+        apply {
+            this.persistentData[key] = value
+        }
 
     /**
      * Build the ItemStack with all configured properties.
      */
-    fun build(): ItemStack {
+    public fun build(): ItemStack {
         val item = ItemStack(material, amount)
         val meta = item.itemMeta ?: return item
 
@@ -261,7 +264,7 @@ class ItemBuilder(
 /**
  * Create an ItemStack with the DSL.
  */
-fun item(
+public fun item(
     material: Material,
     block: ItemBuilder.() -> Unit = {},
 ): ItemStack = ItemBuilder(material).apply(block).build()
@@ -269,7 +272,7 @@ fun item(
 /**
  * Create a Button with an ItemStack and optional click handler.
  */
-fun button(
+public fun button(
     material: Material,
     block: ItemBuilder.() -> Unit = {},
     onClick: (suspend (Player, ClickType) -> Unit)? = null,
@@ -281,7 +284,7 @@ fun button(
 /**
  * Create a Button from an existing ItemStack.
  */
-fun button(
+public fun button(
     itemStack: ItemStack,
     onClick: (suspend (Player, ClickType) -> Unit)? = null,
 ): Button = Button(itemStack, onClick)

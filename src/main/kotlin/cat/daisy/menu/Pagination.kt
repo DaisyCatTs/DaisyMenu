@@ -3,35 +3,35 @@ package cat.daisy.menu
 /**
  * Handles pagination for multi-page menus.
  */
-class PaginationHandler(
-    val itemsPerPage: Int,
-    val block: suspend PaginationBuilder.() -> Unit,
+public class PaginationHandler(
+    public val itemsPerPage: Int,
+    public val block: suspend PaginationBuilder.() -> Unit,
 )
 
 /**
  * Builder for pagination UI.
  * Provides slot() method for defining buttons within paginated context.
  */
-class PaginationBuilder(
-    var itemsPerPage: Int = 45,
+public class PaginationBuilder(
+    public var itemsPerPage: Int = 45,
     internal val buttons: MutableMap<Int, Button> = mutableMapOf(),
 ) {
-    var currentPage: Int = 0
-    var totalPages: Int = 1
+    public var currentPage: Int = 0
+    public var totalPages: Int = 1
     private var previousAction: (suspend () -> Unit)? = null
     private var nextAction: (suspend () -> Unit)? = null
 
     /**
      * Set total number of pages.
      */
-    fun totalPages(count: Int) {
+    public fun totalPages(count: Int) {
         this.totalPages = count
     }
 
     /**
      * Get items for the current page.
      */
-    fun pageItems(): IntRange {
+    public fun pageItems(): IntRange {
         val start = currentPage * itemsPerPage
         val end = minOf(start + itemsPerPage, totalPages * itemsPerPage)
         return start until end
@@ -40,7 +40,7 @@ class PaginationBuilder(
     /**
      * Define a button at a specific slot within pagination context.
      */
-    fun slot(
+    public fun slot(
         index: Int,
         block: SlotBuilder.() -> Unit,
     ) {
@@ -52,21 +52,21 @@ class PaginationBuilder(
     /**
      * Register previous page action.
      */
-    fun previous(action: suspend () -> Unit) {
+    public fun previous(action: suspend () -> Unit) {
         previousAction = action
     }
 
     /**
      * Register next page action.
      */
-    fun next(action: suspend () -> Unit) {
+    public fun next(action: suspend () -> Unit) {
         nextAction = action
     }
 
     /**
      * Move to previous page.
      */
-    suspend fun prevPage() {
+    public suspend fun prevPage() {
         if (currentPage > 0) {
             currentPage--
             previousAction?.invoke()
@@ -76,7 +76,7 @@ class PaginationBuilder(
     /**
      * Move to next page.
      */
-    suspend fun nextPage() {
+    public suspend fun nextPage() {
         if (currentPage < totalPages - 1) {
             currentPage++
             nextAction?.invoke()
@@ -86,10 +86,10 @@ class PaginationBuilder(
     /**
      * Check if previous page exists.
      */
-    fun hasPrevious(): Boolean = currentPage > 0
+    public fun hasPrevious(): Boolean = currentPage > 0
 
     /**
      * Check if next page exists.
      */
-    fun hasNext(): Boolean = currentPage < totalPages - 1
+    public fun hasNext(): Boolean = currentPage < totalPages - 1
 }

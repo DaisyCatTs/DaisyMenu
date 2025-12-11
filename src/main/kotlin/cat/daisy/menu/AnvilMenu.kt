@@ -25,13 +25,13 @@ import kotlin.coroutines.resume
  * }
  * ```
  */
-class AnvilMenu(
-    val title: String,
-    val placeholder: String = "",
+public class AnvilMenu(
+    public val title: String,
+    public val placeholder: String = "",
 ) {
     private val plainSerializer = PlainTextComponentSerializer.plainText()
 
-    suspend fun open(player: Player): String? =
+    public suspend fun open(player: Player): String? =
         suspendCancellableCoroutine { continuation ->
             // Create anvil inventory
             val anvilView = Bukkit.createInventory(null, org.bukkit.event.inventory.InventoryType.ANVIL, title.mm())
@@ -68,7 +68,7 @@ class AnvilMenu(
                                         plainSerializer.serialize(component).takeIf { it.isNotBlank() }
                                     }
                                 }
-                            } catch (e: Exception) {
+                            } catch (_: Exception) {
                                 null
                             }
 

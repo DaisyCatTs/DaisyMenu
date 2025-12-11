@@ -4,6 +4,9 @@
 // - Paginated player list
 // - Anvil input
 // - Live updating with coroutines
+//
+// NOTE: This is an example file and is not part of the public API.
+// It demonstrates how to use DaisyMenu in your own plugins.
 
 package cat.daisy.menu.example
 
@@ -19,7 +22,11 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 
-class DaisyMenuExamplePlugin : JavaPlugin() {
+/**
+ * Example plugin demonstrating DaisyMenu usage.
+ * This is for demonstration purposes only - not part of the public API.
+ */
+internal class DaisyMenuExamplePlugin : JavaPlugin() {
     private lateinit var scope: CoroutineScope
 
     override fun onEnable() {
@@ -220,7 +227,7 @@ class DaisyMenuExamplePlugin : JavaPlugin() {
                 }
             }
 
-            onOpen { menu ->
+            onOpen { _ ->
                 // Static display for now - dynamic updates can be added later
                 // when needed with proper scope handling
             }

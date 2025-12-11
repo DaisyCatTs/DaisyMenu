@@ -16,7 +16,7 @@ import java.time.format.DateTimeFormatter
  * - Placeholder replacement
  * - Console logging with colors
  */
-object DaisyText {
+public object DaisyText {
     private val miniMessage = MiniMessage.miniMessage()
     private val logFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
@@ -53,23 +53,23 @@ object DaisyText {
     /**
      * Standard color palette for consistent styling.
      */
-    object Colors {
-        const val PRIMARY = "#3498db"
-        const val SECONDARY = "#2ecc71"
-        const val ERROR = "#e74c3c"
-        const val SUCCESS = "#2ecc71"
-        const val WARNING = "#f1c40f"
-        const val INFO = "#3498db"
-        const val BROADCAST = "#9b59b6"
-        const val SYSTEM = "#34495e"
-        const val ACCENT = "#e67e22"
-        const val MUTED = "#95a5a6"
+    public object Colors {
+        public const val PRIMARY: String = "#3498db"
+        public const val SECONDARY: String = "#2ecc71"
+        public const val ERROR: String = "#e74c3c"
+        public const val SUCCESS: String = "#2ecc71"
+        public const val WARNING: String = "#f1c40f"
+        public const val INFO: String = "#3498db"
+        public const val BROADCAST: String = "#9b59b6"
+        public const val SYSTEM: String = "#34495e"
+        public const val ACCENT: String = "#e67e22"
+        public const val MUTED: String = "#95a5a6"
     }
 
     /**
      * Parse string as MiniMessage with italic disabled by default.
      */
-    fun String.mm(): Component =
+    public fun String.mm(): Component =
         miniMessage
             .deserialize(convertLegacyColors())
             .decorationIfAbsent(TextDecoration.ITALIC, TextDecoration.State.FALSE)
@@ -77,12 +77,12 @@ object DaisyText {
     /**
      * Parse string as raw MiniMessage (keeps default decorations).
      */
-    fun String.mmRaw(): Component = miniMessage.deserialize(convertLegacyColors())
+    public fun String.mmRaw(): Component = miniMessage.deserialize(convertLegacyColors())
 
     /**
      * Convert legacy &-codes to MiniMessage format.
      */
-    fun String.convertLegacyColors(): String =
+    public fun String.convertLegacyColors(): String =
         replace(legacyColorRegex) { match ->
             val code = match.groupValues[1]
             when {
@@ -103,22 +103,22 @@ object DaisyText {
     /**
      * Apply gradient colors to text.
      */
-    fun String.gradient(vararg colors: String): Component = "<gradient:${colors.joinToString(":")}>$this</gradient>".mm()
+    public fun String.gradient(vararg colors: String): Component = "<gradient:${colors.joinToString(":")}>$this</gradient>".mm()
 
     /**
      * Apply rainbow gradient to text.
      */
-    fun String.rainbow(): Component = gradient("#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3")
+    public fun String.rainbow(): Component = gradient("#FF0000", "#FF7F00", "#FFFF00", "#00FF00", "#0000FF", "#4B0082", "#9400D3")
 
     /**
      * Strip all MiniMessage tags and legacy colors.
      */
-    fun String.stripColors(): String = MiniMessage.miniMessage().stripTags(convertLegacyColors())
+    public fun String.stripColors(): String = MiniMessage.miniMessage().stripTags(convertLegacyColors())
 
     /**
      * Replace placeholders in format {key} with values.
      */
-    fun String.replacePlaceholders(vararg pairs: Pair<String, Any>): String {
+    public fun String.replacePlaceholders(vararg pairs: Pair<String, Any>): String {
         var result = this
         pairs.forEach { (key, value) -> result = result.replace("{$key}", value.toString()) }
         return result
@@ -127,7 +127,7 @@ object DaisyText {
     /**
      * Replace placeholders using a map.
      */
-    fun String.replacePlaceholders(placeholders: Map<String, Any>): String {
+    public fun String.replacePlaceholders(placeholders: Map<String, Any>): String {
         var result = this
         placeholders.forEach { (key, value) -> result = result.replace("{$key}", value.toString()) }
         return result
@@ -136,7 +136,7 @@ object DaisyText {
     /**
      * Log a message to console with timestamp and color.
      */
-    fun log(
+    public fun log(
         message: String,
         level: String = "INFO",
         throwable: Throwable? = null,
@@ -162,16 +162,16 @@ object DaisyText {
         throwable?.printStackTrace()
     }
 
-    fun logInfo(message: String) = log(message, "INFO")
+    public fun logInfo(message: String): Unit = log(message, "INFO")
 
-    fun logSuccess(message: String) = log(message, "SUCCESS")
+    public fun logSuccess(message: String): Unit = log(message, "SUCCESS")
 
-    fun logWarning(message: String) = log(message, "WARNING")
+    public fun logWarning(message: String): Unit = log(message, "WARNING")
 
-    fun logError(
+    public fun logError(
         message: String,
         throwable: Throwable? = null,
-    ) = log(message, "ERROR", throwable)
+    ): Unit = log(message, "ERROR", throwable)
 
-    fun logDebug(message: String) = log(message, "DEBUG")
+    public fun logDebug(message: String): Unit = log(message, "DEBUG")
 }

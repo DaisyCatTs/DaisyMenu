@@ -10,16 +10,16 @@ import org.bukkit.inventory.Inventory
  * Represents an in-game menu/GUI inventory.
  * Built using DSL via [MenuBuilder].
  */
-class Menu(
-    val title: Component,
-    val rows: Int,
+public class Menu(
+    public val title: Component,
+    public val rows: Int,
     internal val slots: MutableMap<Int, Button> = mutableMapOf(),
     internal val openCallbacks: MutableList<suspend (Menu) -> Unit> = mutableListOf(),
     internal val closeCallbacks: MutableList<suspend (Menu) -> Unit> = mutableListOf(),
     internal val paginationHandler: PaginationHandler? = null,
 ) {
-    lateinit var inventory: Inventory
-    lateinit var viewer: Player
+    public lateinit var inventory: Inventory
+    public lateinit var viewer: Player
     private val updateTasks = mutableListOf<org.bukkit.scheduler.BukkitTask>()
     private var isClosed = false
 
@@ -27,7 +27,7 @@ class Menu(
     // MENU LIFECYCLE
     // ─────────────────────────────────────────────────────────────────────────
 
-    suspend fun open(player: Player) {
+    public suspend fun open(player: Player) {
         require(rows in 1..6) { "Menu rows must be between 1 and 6, got $rows" }
 
         this.viewer = player
@@ -52,7 +52,7 @@ class Menu(
         }
     }
 
-    fun close() {
+    public fun close() {
         if (!isClosed) {
             isClosed = true
             viewer.closeInventory()
@@ -73,7 +73,7 @@ class Menu(
     /**
      * Update a specific slot with a new item.
      */
-    fun updateSlot(
+    public fun updateSlot(
         slot: Int,
         button: Button,
     ) {
@@ -86,7 +86,7 @@ class Menu(
      * Automatically cancelled when menu closes.
      * Executes on main thread.
      */
-    fun repeatUpdate(
+    public fun repeatUpdate(
         ticks: Long,
         block: suspend () -> Unit,
     ) {
@@ -113,7 +113,7 @@ class Menu(
      * }
      * ```
      */
-    fun updateSlot(
+    public fun updateSlot(
         slot: Int,
         block: SlotBuilder.() -> Unit,
     ) {
@@ -127,7 +127,7 @@ class Menu(
     /**
      * Fill empty slots with a button at runtime.
      */
-    fun fill(button: Button) {
+    public fun fill(button: Button) {
         for (i in 0 until (rows * 9)) {
             if (!slots.containsKey(i)) {
                 slots[i] = button

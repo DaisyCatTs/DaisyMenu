@@ -1,14 +1,34 @@
 package cat.daisy.menu
 
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import kotlin.coroutines.CoroutineContext
+
+/**
+ * A coroutine dispatcher that executes on the Bukkit main thread.
+ * This is the proper way to run coroutines on the main thread in Minecraft.
+ */
+public class BukkitDispatcher : CoroutineDispatcher() {
+    override fun dispatch(
+        context: CoroutineContext,
+        block: Runnable,
+    ) {
+        if (Bukkit.isPrimaryThread()) {
+            block.run()
+        } else {
+            Bukkit.getScheduler().runTask(DaisyMenu.getPlugin(), block)
+        }
+    }
+}
 
 /**
  * Get a coroutine dispatcher that executes on the Bukkit main thread.
- * This is the proper way to get a dispatcher for Paper 1.21.10+
+ * Use this instead of Dispatchers.Main which doesn't exist in Minecraft.
  */
-internal fun getBukkitDispatcher() = Dispatchers.Main.immediate
+public fun getBukkitDispatcher(): CoroutineDispatcher = BukkitDispatcher()
 
 /**
  * Extension function for Player to open a menu.
@@ -26,7 +46,7 @@ internal fun getBukkitDispatcher() = Dispatchers.Main.immediate
  * }
  * ```
  */
-suspend fun Player.openMenu(block: MenuBuilder.() -> Unit) {
+public suspend fun Player.openMenu(block: MenuBuilder.() -> Unit) {
     val builder = MenuBuilder()
     builder.apply(block)
     val menu = builder.build()
@@ -45,7 +65,7 @@ suspend fun Player.openMenu(block: MenuBuilder.() -> Unit) {
  * }
  * ```
  */
-fun Player.openAnvilAsync(
+public fun Player.openAnvilAsync(
     title: String,
     block: (String?) -> Unit,
 ) {
@@ -66,7 +86,7 @@ fun Player.openAnvilAsync(
  * }
  * ```
  */
-suspend fun Player.openAnvil(title: String): String? {
+public suspend fun Player.openAnvil(title: String): String? {
     val anvil = AnvilMenu(title)
     return anvil.open(this)
 }
@@ -74,7 +94,7 @@ suspend fun Player.openAnvil(title: String): String? {
 /**
  * Convenience: open anvil with placeholder.
  */
-suspend fun Player.openAnvil(
+public suspend fun Player.openAnvil(
     title: String,
     placeholder: String,
 ): String? {

@@ -50,7 +50,7 @@ import org.bukkit.plugin.Plugin
  * }
  * ```
  */
-object DaisyMenu {
+public object DaisyMenu {
     private var plugin: Plugin? = null
     private var coroutineScope: CoroutineScope? = null
     private val menus = mutableMapOf<Int, Menu>()
@@ -60,7 +60,6 @@ object DaisyMenu {
         setOf(
             InventoryAction.COLLECT_TO_CURSOR,
             InventoryAction.MOVE_TO_OTHER_INVENTORY,
-            InventoryAction.HOTBAR_MOVE_AND_READD,
             InventoryAction.HOTBAR_SWAP,
             InventoryAction.CLONE_STACK,
             InventoryAction.SWAP_WITH_CURSOR,
@@ -73,7 +72,7 @@ object DaisyMenu {
      * @param pluginInstance Your plugin instance
      * @param scope Optional custom CoroutineScope (defaults to main thread dispatcher)
      */
-    fun initialize(
+    public fun initialize(
         pluginInstance: Plugin,
         scope: CoroutineScope? = null,
     ) {
@@ -116,6 +115,7 @@ object DaisyMenu {
                         return
                     }
 
+                    // Invoke click handler on main thread
                     getScope().launch {
                         button.invokeClick(player, event.click)
                     }
@@ -156,7 +156,7 @@ object DaisyMenu {
      * Shutdown DaisyMenu, closing all menus and cleaning up.
      * Call this in your plugin's onDisable().
      */
-    fun shutdown() {
+    public fun shutdown() {
         // Close all open menus safely
         menus.values.toList().forEach { menu ->
             try {
@@ -173,12 +173,12 @@ object DaisyMenu {
     /**
      * Check if DaisyMenu has been initialized.
      */
-    fun isInitialized(): Boolean = plugin != null
+    public fun isInitialized(): Boolean = plugin != null
 
     /**
      * Get the number of currently open menus.
      */
-    fun getOpenMenuCount(): Int = menus.size
+    public fun getOpenMenuCount(): Int = menus.size
 
     @PublishedApi
     internal fun getPlugin(): Plugin = plugin ?: error("DaisyMenu not initialized. Call DaisyMenu.initialize(plugin) in onEnable()")
