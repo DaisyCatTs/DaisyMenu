@@ -314,10 +314,20 @@ public class MenuClickContext internal constructor(
     }
 }
 
+public class MenuClickAction internal constructor(
+    private val handler: suspend MenuClickContext.() -> Unit,
+) {
+    internal suspend fun invoke(context: MenuClickContext) {
+        handler(context)
+    }
+}
+
+public fun onMenuClick(handler: suspend MenuClickContext.() -> Unit): MenuClickAction = MenuClickAction(handler)
+
 internal class SlotDefinition(
     item: ItemStack? = null,
     internal val renderer: (MenuRenderContext.() -> ItemStack)? = null,
-    internal val clickHandler: (suspend MenuClickContext.() -> Unit)? = null,
+    internal val clickHandler: MenuClickAction? = null,
     internal val refreshTicks: Long? = null,
 ) {
     private val staticItem: ItemStack? = item?.clone()

@@ -198,12 +198,12 @@ public fun item(
 public fun button(
     material: Material,
     block: ItemBuilder.() -> Unit = {},
-    onClick: (suspend MenuClickContext.() -> Unit)? = null,
+    onClick: MenuClickAction? = null,
 ): Button = button(item(material, block), onClick)
 
 public fun button(
     itemStack: ItemStack,
-    onClick: (suspend MenuClickContext.() -> Unit)? = null,
+    onClick: MenuClickAction? = null,
 ): Button =
     Button(
         SlotDefinition(
@@ -217,14 +217,23 @@ public fun button(
     block: ItemBuilder.() -> Unit = {},
     onClick: suspend (Player, ClickType) -> Unit,
 ): Button =
-    button(material, block) {
-        onClick(player, clickType)
-    }
+    button(
+        material = material,
+        block = block,
+        onClick =
+            onMenuClick {
+                onClick(player, clickType)
+            },
+    )
 
 public fun button(
     itemStack: ItemStack,
     onClick: suspend (Player, ClickType) -> Unit,
 ): Button =
-    button(itemStack) {
-        onClick(player, clickType)
-    }
+    button(
+        itemStack = itemStack,
+        onClick =
+            onMenuClick {
+                onClick(player, clickType)
+            },
+    )
