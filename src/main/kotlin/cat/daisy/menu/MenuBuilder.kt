@@ -177,7 +177,7 @@ public class SlotBuilder {
         }
 
     private var renderer: (MenuRenderContext.() -> ItemStack)? = null
-    private var clickHandler: (suspend MenuClickContext.() -> Unit)? = null
+    private var clickHandler: MenuClickAction? = null
     private var refreshTicks: Long? = null
 
     public fun item(
@@ -198,17 +198,27 @@ public class SlotBuilder {
 
     @JvmName("onClickContext")
     public fun onClick(handler: suspend MenuClickContext.() -> Unit) {
-        clickHandler = handler
+        clickHandler = onMenuClick(handler)
     }
 
     @JvmName("onClickPlayer")
     public fun onClick(handler: suspend (Player) -> Unit) {
-        clickHandler = { handler(player) }
+        clickHandler =
+            onMenuClick {
+                handler(player)
+            }
     }
 
     @JvmName("onClickPlayerAndClickType")
     public fun onClick(handler: suspend (Player, ClickType) -> Unit) {
-        clickHandler = { handler(player, clickType) }
+        clickHandler =
+            onMenuClick {
+                handler(player, clickType)
+            }
+    }
+
+    public fun onClick(action: MenuClickAction) {
+        clickHandler = action
     }
 
     internal fun build(): SlotDefinition {
