@@ -5,321 +5,328 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.inventory.ItemStack
+import kotlin.jvm.JvmName
 
 /**
- * DSL builder for creating menus.
+ * DSL builder for creating immutable [Menu] definitions.
  */
-public class MenuBuilder {
-    public lateinit var title: String
-    public var rows: Int = 3
-    internal val buttons = mutableMapOf<Int, Button>()
-    internal val openCallbacks = mutableListOf<suspend (Menu) -> Unit>()
-    internal val closeCallbacks = mutableListOf<suspend (Menu) -> Unit>()
-    internal var paginationConfig: PaginationHandler? = null
+public class MenuBuilder(
+    public var title: String = "",
+    public var rows: Int = 3,
+) {
+    private val slots = mutableMapOf<Int, SlotDefinition>()
+    private val openHandlers = mutableListOf<suspend (MenuSession) -> Unit>()
+    private val closeHandlers = mutableListOf<suspend (MenuSession) -> Unit>()
+    private var pagination: PaginationDefinition? = null
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // SLOT DEFINITION
-    // ─────────────────────────────────────────────────────────────────────────
+    internal val size: Int
+        get() = rows * 9
 
-    /**
-     * Define a button at a specific slot.
-     */
     public fun slot(
         index: Int,
-        btn: Button,
+        button: Button,
     ) {
-        buttons[index] = btn
+        setSlotDefinition(index, button.definition)
     }
 
-    /**
-     * Define a button at a specific slot with a builder.
-     */
     public fun slot(
         index: Int,
         block: SlotBuilder.() -> Unit,
     ) {
-        val slotBuilder = SlotBuilder()
-        slotBuilder.apply(block)
-        buttons[index] = slotBuilder.build()
+        setSlotDefinition(index, SlotBuilder().apply(block).build())
     }
 
-    /**
-     * Define a button using x/y coordinates (1-indexed).
-     */
     public fun slot(
         x: Int,
         y: Int,
         block: SlotBuilder.() -> Unit,
     ) {
-        val slot = (x - 1) + ((y - 1) * 9)
-        slot(slot, block)
+        require(x in 1..9) { "Column must be between 1 and 9" }
+        require(y in 1..rows) { "Row must be between 1 and $rows" }
+        slot((x - 1) + ((y - 1) * 9), block)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // FILL & PATTERNS
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Fill empty slots with a default gray stained glass pane.
-     * Use the block to customize the item (name, lore, etc).
-     *
-     * ```kotlin
-     * fill { name(" ") }
-     * ```
-     */
     public fun fill(block: ItemBuilder.() -> Unit = {}) {
         fill(Material.GRAY_STAINED_GLASS_PANE, block)
     }
 
-    /**
-     * Fill empty slots with a specific material.
-     *
-     * ```kotlin
-     * fill(Material.BLACK_STAINED_GLASS_PANE) { name(" ") }
-     * ```
-     */
     public fun fill(
         material: Material,
         block: ItemBuilder.() -> Unit = {},
     ) {
-        val itemBuilder = ItemBuilder(material)
-        itemBuilder.apply(block)
-        val fillButton = Button(itemBuilder.build(), null)
-        for (i in 0 until (rows * 9)) {
-            if (!buttons.containsKey(i)) {
-                buttons[i] = fillButton
-            }
+        val definition = SlotBuilder().apply { item(material, block) }.build()
+        repeat(size) { slot ->
+            setSlotDefinition(slot, definition, overwrite = false)
         }
     }
 
-    /**
-     * Fill specific slots with a button (for patterns).
-     *
-     * ```kotlin
-     * fillSlots(0, 8, 45, 53) { // corners
-     *     item(Material.DIAMOND) { name("&bCorner") }
-     * }
-     * ```
-     */
     public fun fillSlots(
-        vararg slots: Int,
+        vararg indices: Int,
         block: SlotBuilder.() -> Unit,
     ) {
-        val slotBuilder = SlotBuilder()
-        slotBuilder.apply(block)
-        val btn = slotBuilder.build()
-        slots.forEach { buttons[it] = btn }
+        val definition = SlotBuilder().apply(block).build()
+        indices.forEach { index ->
+            setSlotDefinition(index, definition)
+        }
     }
 
-    /**
-     * Fill a row with a button (1-indexed).
-     *
-     * ```kotlin
-     * fillRow(1) { item(Material.RED_STAINED_GLASS_PANE) { name(" ") } }
-     * ```
-     */
     public fun fillRow(
         row: Int,
         block: SlotBuilder.() -> Unit,
     ) {
         require(row in 1..rows) { "Row must be between 1 and $rows" }
-        val slotBuilder = SlotBuilder()
-        slotBuilder.apply(block)
-        val btn = slotBuilder.build()
-        val startSlot = (row - 1) * 9
-        for (i in startSlot until startSlot + 9) {
-            buttons[i] = btn
+        val definition = SlotBuilder().apply(block).build()
+        val start = (row - 1) * 9
+        for (slot in start until start + 9) {
+            setSlotDefinition(slot, definition)
         }
     }
 
-    /**
-     * Fill a column with a button (1-indexed, 1-9).
-     *
-     * ```kotlin
-     * fillColumn(1) { item(Material.BLUE_STAINED_GLASS_PANE) { name(" ") } }
-     * ```
-     */
     public fun fillColumn(
         column: Int,
         block: SlotBuilder.() -> Unit,
     ) {
         require(column in 1..9) { "Column must be between 1 and 9" }
-        val slotBuilder = SlotBuilder()
-        slotBuilder.apply(block)
-        val btn = slotBuilder.build()
+        val definition = SlotBuilder().apply(block).build()
         for (row in 0 until rows) {
-            buttons[row * 9 + (column - 1)] = btn
+            setSlotDefinition((row * 9) + (column - 1), definition)
         }
     }
 
-    /**
-     * Fill the border of the menu.
-     *
-     * ```kotlin
-     * fillBorder(Material.WHITE_STAINED_GLASS_PANE) { name(" ") }
-     * ```
-     */
     public fun fillBorder(
         material: Material = Material.GRAY_STAINED_GLASS_PANE,
         block: ItemBuilder.() -> Unit = {},
     ) {
-        val itemBuilder = ItemBuilder(material)
-        itemBuilder.apply(block)
-        val borderButton = Button(itemBuilder.build(), null)
-
-        // Top row
-        for (i in 0 until 9) {
-            buttons[i] = borderButton
-        }
-        // Bottom row
-        val bottomStart = (rows - 1) * 9
-        for (i in bottomStart until bottomStart + 9) {
-            buttons[i] = borderButton
-        }
-        // Left and right columns (excluding corners already filled)
+        val definition = SlotBuilder().apply { item(material, block) }.build()
+        topRowSlots().forEach { slot -> setSlotDefinition(slot, definition) }
+        bottomRowSlots().forEach { slot -> setSlotDefinition(slot, definition) }
         for (row in 1 until rows - 1) {
-            buttons[row * 9] = borderButton // Left
-            buttons[row * 9 + 8] = borderButton // Right
+            setSlotDefinition(row * 9, definition)
+            setSlotDefinition((row * 9) + 8, definition)
         }
     }
 
-    /**
-     * Apply a pattern using a string template.
-     * Each character maps to a Button via the provided mapping.
-     *
-     * ```kotlin
-     * pattern(
-     *     "XXXXXXXXX",
-     *     "X       X",
-     *     "X   D   X",
-     *     "X       X",
-     *     "XXXXXXXXX"
-     * ) {
-     *     'X' to { item(Material.BLACK_STAINED_GLASS_PANE) { name(" ") } }
-     *     'D' to { item(Material.DIAMOND) { name("&bDiamond"); onClick { p, _ -> p.sendMessage("Clicked!") } } }
-     * }
-     * ```
-     */
     public fun pattern(
         vararg lines: String,
         mapping: PatternMapping.() -> Unit,
     ) {
         require(lines.size <= rows) { "Pattern has ${lines.size} rows but menu only has $rows rows" }
+        lines.forEach { line ->
+            require(line.length <= 9) { "Pattern lines must not be wider than 9 columns" }
+        }
 
-        val patternMapping = PatternMapping()
-        patternMapping.apply(mapping)
-
+        val patternMapping = PatternMapping().apply(mapping)
         lines.forEachIndexed { rowIndex, line ->
-            line.take(9).forEachIndexed { colIndex, char ->
-                if (char != ' ') {
-                    patternMapping.getBuilder(char)?.let { builder ->
-                        val slotBuilder = SlotBuilder()
-                        slotBuilder.apply(builder)
-                        buttons[rowIndex * 9 + colIndex] = slotBuilder.build()
-                    }
+            line.forEachIndexed { column, character ->
+                if (character == ' ') {
+                    return@forEachIndexed
                 }
+                val block = patternMapping.getBuilder(character) ?: return@forEachIndexed
+                slot((rowIndex * 9) + column, block)
             }
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PAGINATION
-    // ─────────────────────────────────────────────────────────────────────────
-
     public fun pagination(
         itemsPerPage: Int,
-        block: suspend PaginationBuilder.() -> Unit,
+        block: suspend PaginationScope.() -> Unit,
     ) {
-        paginationConfig = PaginationHandler(itemsPerPage, block)
+        require(itemsPerPage > 0) { "Items per page must be greater than 0" }
+        pagination = PaginationDefinition(itemsPerPage, block)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // LIFECYCLE
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Called when menu is opened.
-     */
-    public fun onOpen(block: suspend (Menu) -> Unit) {
-        openCallbacks.add(block)
+    public fun template(block: MenuTemplateBuilder.() -> Unit) {
+        MenuTemplateBuilder(this).apply(block)
     }
 
-    /**
-     * Called when menu is closed.
-     */
-    public fun onClose(block: suspend (Menu) -> Unit) {
-        closeCallbacks.add(block)
+    public fun onOpen(block: suspend (MenuSession) -> Unit) {
+        openHandlers += block
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // BUILD
-    // ─────────────────────────────────────────────────────────────────────────
+    public fun onClose(block: suspend (MenuSession) -> Unit) {
+        closeHandlers += block
+    }
 
     public fun build(): Menu {
-        require(title.isNotEmpty()) { "Menu title cannot be empty" }
+        require(title.isNotBlank()) { "Menu title cannot be blank" }
         require(rows in 1..6) { "Menu rows must be between 1 and 6, got $rows" }
 
-        val titleComponent = title.mm()
-        return Menu(titleComponent, rows, buttons, openCallbacks, closeCallbacks, paginationConfig)
+        val definitions: Array<SlotDefinition?> = arrayOfNulls(size)
+        slots.forEach { (slot, definition) ->
+            validateSlotIndex(slot)
+            definitions[slot] = definition
+        }
+
+        return Menu(
+            title = title.mm(),
+            rows = rows,
+            baseSlots = definitions,
+            openHandlers = openHandlers.toList(),
+            closeHandlers = closeHandlers.toList(),
+            pagination = pagination,
+        )
+    }
+
+    internal fun validateSlotIndex(slot: Int) {
+        require(slot in 0 until size) { "Slot $slot is out of range (0-${size - 1})" }
+    }
+
+    internal fun setSlotDefinition(
+        slot: Int,
+        definition: SlotDefinition,
+        overwrite: Boolean = true,
+    ) {
+        validateSlotIndex(slot)
+        if (overwrite) {
+            slots[slot] = definition
+        } else {
+            slots.putIfAbsent(slot, definition)
+        }
+    }
+
+    internal fun removeSlotDefinition(slot: Int) {
+        validateSlotIndex(slot)
+        slots.remove(slot)
+    }
+
+    internal fun topRowSlots(): IntRange = 0..8
+
+    internal fun bottomRowSlots(): IntRange {
+        val start = (rows - 1) * 9
+        return start until start + 9
     }
 }
 
 /**
- * Builder for a single slot button.
+ * Builder for a single slot definition.
  */
 public class SlotBuilder {
-    private var itemStack: ItemStack? = null
-    private var clickHandler: (suspend (Player, ClickType) -> Unit)? = null
+    public var item: ItemStack? = null
+        set(value) {
+            field = value?.clone()
+        }
+
+    private var renderer: (MenuRenderContext.() -> ItemStack?)? = null
+    private var refreshTicks: Long? = null
+    private val clickBindings = mutableListOf<MenuClickBinding>()
 
     public fun item(
         material: Material,
         block: ItemBuilder.() -> Unit = {},
     ) {
-        val itemBuilder = ItemBuilder(material)
-        itemBuilder.apply(block)
-        this.itemStack = itemBuilder.build()
+        item = ItemBuilder(material).apply(block).build()
     }
 
-    public fun item(itemStack: ItemStack) {
-        this.itemStack = itemStack
+    public fun render(block: MenuRenderContext.() -> ItemStack?) {
+        renderer = block
     }
 
-    // Accept suspend function with both parameters
+    public fun refreshEvery(ticks: Long) {
+        require(ticks > 0) { "Refresh interval must be greater than 0 ticks" }
+        refreshTicks = ticks
+    }
+
+    @JvmName("onClickContext")
+    public fun onClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ true }, onMenuClick(handler))
+    }
+
+    public fun onPlayerClick(handler: suspend Player.() -> Unit) {
+        addClickBinding(
+            { true },
+            onMenuClick {
+                player.handler()
+            },
+        )
+    }
+
+    @JvmName("onClickPlayerAndClickType")
     public fun onClick(handler: suspend (Player, ClickType) -> Unit) {
-        this.clickHandler = handler
+        addClickBinding(
+            { true },
+            onMenuClick {
+                handler(player, clickType)
+            },
+        )
     }
 
-    // Accept suspend function with just Player parameter
-    public fun onClick(handler: suspend (Player) -> Unit) {
-        this.clickHandler = { player, _ -> handler(player) }
+    public fun onClick(action: MenuClickAction) {
+        addClickBinding({ true }, action)
     }
 
-    // Accept regular function with both parameters (auto-wrapped in coroutine)
-    public fun onClickSync(handler: (Player, ClickType) -> Unit) {
-        this.clickHandler = { player, clickType -> handler(player, clickType) }
+    public fun onLeftClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType.isLeftClick }, onMenuClick(handler))
     }
 
-    // Accept regular function with just Player parameter (auto-wrapped in coroutine)
-    public fun onClickSync(handler: (Player) -> Unit) {
-        this.clickHandler = { player, _ -> handler(player) }
+    public fun onRightClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType.isRightClick }, onMenuClick(handler))
     }
 
-    public fun build(): Button {
-        val stack = itemStack ?: ItemStack(Material.AIR)
-        return Button(stack, clickHandler)
+    public fun onShiftClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType.isShiftClick }, onMenuClick(handler))
+    }
+
+    public fun onMiddleClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType == ClickType.MIDDLE }, onMenuClick(handler))
+    }
+
+    public fun onDropClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding(
+            { clickType -> clickType == ClickType.DROP || clickType == ClickType.CONTROL_DROP },
+            onMenuClick(handler),
+        )
+    }
+
+    public fun closeOnClick() {
+        onClick(
+            onMenuClick {
+                close()
+            },
+        )
+    }
+
+    public fun invalidateOnClick(vararg slots: Int) {
+        onClick(
+            onMenuClick {
+                if (slots.isEmpty()) {
+                    invalidate()
+                } else {
+                    invalidate(*slots)
+                }
+            },
+        )
+    }
+
+    internal fun hasVisualState(): Boolean = item != null || renderer != null
+
+    internal fun hasClickBindings(): Boolean = clickBindings.isNotEmpty()
+
+    internal fun build(): SlotDefinition {
+        if (refreshTicks != null) {
+            require(renderer != null) { "Slot refreshEvery() requires a render { ... } block" }
+        }
+        return SlotDefinition(
+            item = item,
+            renderer = renderer,
+            clickBindings = clickBindings.toList(),
+            refreshTicks = refreshTicks,
+        )
+    }
+
+    private fun addClickBinding(
+        matcher: (ClickType) -> Boolean,
+        action: MenuClickAction,
+    ) {
+        clickBindings += MenuClickBinding(matcher, action)
     }
 }
 
 /**
  * Mapping for pattern-based menu layouts.
- * Maps characters to SlotBuilder configurations.
  */
 public class PatternMapping {
     private val mappings = mutableMapOf<Char, SlotBuilder.() -> Unit>()
 
-    /**
-     * Map a character to a slot builder configuration.
-     */
     public infix fun Char.to(block: SlotBuilder.() -> Unit) {
         mappings[this] = block
     }
