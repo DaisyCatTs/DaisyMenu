@@ -1,6 +1,6 @@
 package cat.daisy.menu
 
-import cat.daisy.menu.text.DaisyText.mm
+import cat.daisy.menu.text.DaisyText
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -14,227 +14,158 @@ import org.bukkit.persistence.PersistentDataType
 import java.util.UUID
 
 /**
- * A button in a menu - represents an ItemStack with optional click handler.
- * Immutable once created for thread safety.
+ * Immutable static slot helper.
  */
-public class Button(
-    public val itemStack: ItemStack,
-    internal val clickHandler: (suspend (Player, ClickType) -> Unit)? = null,
+public class Button internal constructor(
+    internal val definition: SlotDefinition,
 ) {
-    public companion object {
-        /**
-         * Create a button with no click handler (decoration).
-         */
-        public fun empty(): Button = Button(ItemStack(Material.AIR))
+    public val itemStack: ItemStack?
+        get() = definition.previewItem()
 
-        /**
-         * Create a simple decoration button.
-         */
+    public companion object {
+        public fun empty(): Button = Button(SlotDefinition())
+
         public fun decoration(
             material: Material,
-            name: String = " ",
-        ): Button = Button(item(material) { name(name) })
-    }
-
-    /**
-     * Check if this button has a click handler.
-     */
-    public fun hasClickHandler(): Boolean = clickHandler != null
-
-    public suspend fun invokeClick(
-        player: Player,
-        clickType: ClickType,
-    ) {
-        clickHandler?.invoke(player, clickType)
+            displayName: String = " ",
+        ): Button =
+            button(
+                material = material,
+                block = {
+                    name(displayName)
+                },
+            )
     }
 }
 
-/**
- * DSL builder for creating ItemStacks with proper MiniMessage formatting.
- * Supports all modern Paper/Adventure features.
- */
 public class ItemBuilder(
     private val material: Material,
 ) {
-    private var name: Component? = null
-    private var lore: MutableList<Component> = mutableListOf()
-    private var amount: Int = 1
+    public var name: String? = null
+    private var nameComponent: Component? = null
+    private val loreLines = mutableListOf<Component>()
+    private var stackAmount: Int = 1
     private var customModelData: Int? = null
     private var glowing: Boolean = false
     private var unbreakable: Boolean = false
-    private val flags: MutableSet<ItemFlag> = mutableSetOf()
-    private val enchantments: MutableMap<Enchantment, Int> = mutableMapOf()
+    private val flags = mutableSetOf<ItemFlag>()
+    private val enchantments = mutableMapOf<Enchantment, Int>()
     private var skullOwner: UUID? = null
-    private val persistentData: MutableMap<String, Any> = mutableMapOf()
+    private val persistentData = mutableMapOf<String, Any>()
 
-    /**
-     * Set the display name using MiniMessage formatting.
-     */
-    public fun name(text: String) {
-        this.name = text.mm()
-    }
-
-    /**
-     * Set the display name using a Component.
-     */
     public fun name(component: Component) {
-        this.name = component
+        name = null
+        nameComponent = component
     }
 
-    /**
-     * Set the lore using MiniMessage formatting.
-     */
+    public fun name(text: String) {
+        name = text
+        nameComponent = null
+    }
+
     public fun lore(vararg lines: String) {
-        this.lore = lines.map { it.mm() }.toMutableList()
+        loreLines.clear()
+        loreLines += lines.map { DaisyText.run { it.mm() } }
     }
 
-    /**
-     * Set the lore using a list of strings with MiniMessage formatting.
-     */
     public fun lore(lines: List<String>) {
-        this.lore = lines.map { it.mm() }.toMutableList()
+        loreLines.clear()
+        loreLines += lines.map { DaisyText.run { it.mm() } }
     }
 
-    /**
-     * Set the lore using Components.
-     */
     public fun loreComponents(lines: List<Component>) {
-        this.lore = lines.toMutableList()
+        loreLines.clear()
+        loreLines += lines
     }
 
-    /**
-     * Add a single lore line.
-     */
     public fun addLore(line: String) {
-        this.lore.add(line.mm())
+        loreLines += DaisyText.run { line.mm() }
     }
 
-    /**
-     * Set the stack amount.
-     */
     public fun amount(count: Int): ItemBuilder =
         apply {
             require(count in 1..64) { "Amount must be between 1 and 64" }
-            this.amount = count
+            stackAmount = count
         }
 
-    /**
-     * Set custom model data for resource pack textures.
-     */
-    public fun customModelData(data: Int): ItemBuilder = apply { this.customModelData = data }
+    public fun customModelData(data: Int): ItemBuilder = apply { customModelData = data }
 
-    /**
-     * Add enchantment glow effect without visible enchantment.
-     */
-    public fun glow(): ItemBuilder = apply { this.glowing = true }
+    public fun glow(): ItemBuilder = apply { glowing = true }
 
-    /**
-     * Make the item unbreakable.
-     */
-    public fun unbreakable(): ItemBuilder = apply { this.unbreakable = true }
+    public fun unbreakable(): ItemBuilder = apply { unbreakable = true }
 
-    /**
-     * Add an enchantment.
-     */
     public fun enchant(
         enchantment: Enchantment,
         level: Int = 1,
     ): ItemBuilder =
         apply {
-            this.enchantments[enchantment] = level
+            enchantments[enchantment] = level
         }
 
-    /**
-     * Add item flags to hide attributes.
-     */
     public fun flags(vararg itemFlags: ItemFlag): ItemBuilder =
         apply {
-            this.flags.addAll(itemFlags)
+            flags.addAll(itemFlags)
         }
 
-    /**
-     * Hide all item attributes (enchants, attributes, etc).
-     */
     public fun hideAttributes(): ItemBuilder =
         apply {
-            this.flags.addAll(ItemFlag.entries)
+            flags.addAll(ItemFlag.entries)
         }
 
-    /**
-     * Set skull owner for PLAYER_HEAD material.
-     */
     public fun skullOwner(uuid: UUID): ItemBuilder =
         apply {
-            this.skullOwner = uuid
+            skullOwner = uuid
         }
 
-    /**
-     * Set skull owner for PLAYER_HEAD material by player.
-     */
     public fun skullOwner(player: Player): ItemBuilder =
         apply {
-            this.skullOwner = player.uniqueId
+            skullOwner = player.uniqueId
         }
 
-    /**
-     * Store persistent data on the item (survives server restarts).
-     */
     public fun persistentData(
         key: String,
         value: String,
     ): ItemBuilder =
         apply {
-            this.persistentData[key] = value
+            persistentData[key] = value
         }
 
-    /**
-     * Store persistent data on the item (survives server restarts).
-     */
     public fun persistentData(
         key: String,
         value: Int,
     ): ItemBuilder =
         apply {
-            this.persistentData[key] = value
+            persistentData[key] = value
         }
 
-    /**
-     * Build the ItemStack with all configured properties.
-     */
     public fun build(): ItemStack {
-        val item = ItemStack(material, amount)
-        val meta = item.itemMeta ?: return item
+        val itemStack = ItemStack(material, stackAmount)
+        val meta = itemStack.itemMeta ?: return itemStack
 
-        // Display name (with italic disabled by default via mm())
-        name?.let { meta.displayName(it) }
+        val displayName = nameComponent ?: name?.let { DaisyText.run { it.mm() } }
+        displayName?.let(meta::displayName)
 
-        // Lore
-        if (lore.isNotEmpty()) {
-            meta.lore(lore)
+        if (loreLines.isNotEmpty()) {
+            meta.lore(loreLines.toList())
         }
 
-        // Custom model data (suppress deprecation as this is the standard way pre-1.21.3)
         @Suppress("DEPRECATION")
-        customModelData?.let { meta.setCustomModelData(it) }
+        customModelData?.let(meta::setCustomModelData)
 
-        // Glow effect
         if (glowing) {
             meta.addEnchant(Enchantment.UNBREAKING, 1, true)
             meta.addItemFlags(ItemFlag.HIDE_ENCHANTS)
         }
 
-        // Regular enchantments
-        enchantments.forEach { (enchant, level) ->
-            meta.addEnchant(enchant, level, true)
+        enchantments.forEach { (enchantment, level) ->
+            meta.addEnchant(enchantment, level, true)
         }
 
-        // Unbreakable
         if (unbreakable) {
             meta.isUnbreakable = true
             meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE)
         }
 
-        // Item flags
         if (flags.isNotEmpty()) {
             meta.addItemFlags(*flags.toTypedArray())
         }
@@ -243,11 +174,10 @@ public class ItemBuilder(
             meta.owningPlayer = org.bukkit.Bukkit.getOfflinePlayer(skullOwner!!)
         }
 
-        // Persistent data
         if (persistentData.isNotEmpty()) {
             val container = meta.persistentDataContainer
             persistentData.forEach { (key, value) ->
-                val namespacedKey = NamespacedKey(DaisyMenu.getPlugin(), key)
+                val namespacedKey = NamespacedKey(DaisyMenu.plugin(), key)
                 when (value) {
                     is String -> container.set(namespacedKey, PersistentDataType.STRING, value)
                     is Int -> container.set(namespacedKey, PersistentDataType.INTEGER, value)
@@ -255,35 +185,46 @@ public class ItemBuilder(
             }
         }
 
-        item.itemMeta = meta
-        return item
+        itemStack.itemMeta = meta
+        return itemStack
     }
 }
 
-/**
- * Create an ItemStack with the DSL.
- */
 public fun item(
     material: Material,
     block: ItemBuilder.() -> Unit = {},
 ): ItemStack = ItemBuilder(material).apply(block).build()
 
-/**
- * Create a Button with an ItemStack and optional click handler.
- */
 public fun button(
     material: Material,
     block: ItemBuilder.() -> Unit = {},
-    onClick: (suspend (Player, ClickType) -> Unit)? = null,
-): Button {
-    val itemStack = item(material, block)
-    return Button(itemStack, onClick)
-}
+    onClick: (suspend MenuClickContext.() -> Unit)? = null,
+): Button = button(item(material, block), onClick)
 
-/**
- * Create a Button from an existing ItemStack.
- */
 public fun button(
     itemStack: ItemStack,
-    onClick: (suspend (Player, ClickType) -> Unit)? = null,
-): Button = Button(itemStack, onClick)
+    onClick: (suspend MenuClickContext.() -> Unit)? = null,
+): Button =
+    Button(
+        SlotDefinition(
+            item = itemStack,
+            clickHandler = onClick,
+        ),
+    )
+
+public fun button(
+    material: Material,
+    block: ItemBuilder.() -> Unit = {},
+    onClick: suspend (Player, ClickType) -> Unit,
+): Button =
+    button(material, block) {
+        onClick(player, clickType)
+    }
+
+public fun button(
+    itemStack: ItemStack,
+    onClick: suspend (Player, ClickType) -> Unit,
+): Button =
+    button(itemStack) {
+        onClick(player, clickType)
+    }

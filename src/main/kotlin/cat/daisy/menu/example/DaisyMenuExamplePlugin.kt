@@ -1,241 +1,113 @@
-// Example plugin demonstrating DaisyMenu usage.
-// This example shows:
-// - Basic menu creation
-// - Paginated player list
-// - Anvil input
-// - Live updating with coroutines
-//
-// NOTE: This is an example file and is not part of the public API.
-// It demonstrates how to use DaisyMenu in your own plugins.
-
 package cat.daisy.menu.example
 
 import cat.daisy.menu.DaisyMenu
-import cat.daisy.menu.getBukkitDispatcher
-import cat.daisy.menu.openAnvil
+import cat.daisy.menu.MenuClickContext
+import cat.daisy.menu.menu
 import cat.daisy.menu.openMenu
 import cat.daisy.menu.text.DaisyText.mm
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 
 /**
- * Example plugin demonstrating DaisyMenu usage.
- * This is for demonstration purposes only - not part of the public API.
+ * Example plugin demonstrating the current DaisyMenu API.
  */
 internal class DaisyMenuExamplePlugin : JavaPlugin() {
-    private lateinit var scope: CoroutineScope
-
     override fun onEnable() {
-        // Initialize DaisyMenu
-        scope = CoroutineScope(getBukkitDispatcher())
-        DaisyMenu.initialize(this, scope)
+        DaisyMenu.initialize(this)
 
-        // Register commands
         getCommand("shop")?.setExecutor { sender, _, _, _ ->
             if (sender is Player) {
-                scope.launch {
-                    openShopMenu(sender)
-                }
-            }
-            true
-        }
-
-        getCommand("rename")?.setExecutor { sender, _, _, _ ->
-            if (sender is Player) {
-                scope.launch {
-                    renameItem(sender)
-                }
+                openShopMenu(sender)
             }
             true
         }
 
         getCommand("players")?.setExecutor { sender, _, _, _ ->
             if (sender is Player) {
-                scope.launch {
-                    openPlayerList(sender)
-                }
+                openPlayerList(sender)
             }
             true
         }
-
-        getCommand("status")?.setExecutor { sender, _, _, _ ->
-            if (sender is Player) {
-                scope.launch {
-                    openServerStatus(sender)
-                }
-            }
-            true
-        }
-
-        logger.info("DaisyMenu Example Plugin enabled!")
     }
 
-    private suspend fun openShopMenu(player: Player) {
-        player.openMenu {
-            title = "&b&lShop"
-            rows = 6
+    private fun openShopMenu(player: Player) {
+        player.openMenu(
+            menu("&b&lShop", rows = 3) {
+                fill { name = " " }
 
-            // Fill background
-            fill {
-                name(" ")
-            }
-
-            // Diamond
-            slot(11) {
-                item(Material.DIAMOND) {
-                    name("&bDiamond")
-                    lore("&7Price: 100 coins", "&8Click to buy")
-                }
-                onClick { p ->
-                    p.sendMessage("&a✓ Diamond purchased!".mm())
-                }
-            }
-
-            // Gold Ingot
-            slot(13) {
-                item(Material.GOLD_INGOT) {
-                    name("&6Gold Ingot")
-                    lore("&7Price: 50 coins", "&8Click to buy")
-                }
-                onClick { p ->
-                    p.sendMessage("&a✓ Gold ingot purchased!".mm())
-                }
-            }
-
-            // Emerald
-            slot(15) {
-                item(Material.EMERALD) {
-                    name("&2Emerald")
-                    lore("&7Price: 75 coins", "&8Click to buy")
-                }
-                onClick { p ->
-                    p.sendMessage("&a✓ Emerald purchased!".mm())
-                }
-            }
-
-            slot(49) {
-                item(Material.BARRIER) {
-                    name("&cClose")
-                }
-                onClick { p -> p.closeInventory() }
-            }
-
-            onClose {
-                player.sendMessage("&8Shop closed".mm())
-            }
-        }
-    }
-
-    private suspend fun renameItem(player: Player) {
-        val name = player.openAnvil("&e&lRename Item", "&7Type new name")
-        if (name != null && name.isNotBlank()) {
-            player.sendMessage("&a✓ Item renamed to: $name".mm())
-        } else {
-            player.sendMessage("&cCancelled".mm())
-        }
-    }
-
-    private suspend fun openPlayerList(player: Player) {
-        player.openMenu {
-            title = "&b&lOnline Players"
-            rows = 6
-
-            val players = Bukkit.getOnlinePlayers().toList()
-            val itemsPerPage = 45
-            val pages = (players.size + itemsPerPage - 1) / itemsPerPage
-
-            pagination(itemsPerPage = itemsPerPage) {
-                totalPages(pages)
-
-                // Fill page content
-                val pageStart = currentPage * itemsPerPage
-                val pageEnd = minOf(pageStart + itemsPerPage, players.size)
-                val pageItems = players.subList(pageStart, pageEnd)
-
-                pageItems.forEachIndexed { index, p ->
-                    slot(index) {
-                        item(Material.PLAYER_HEAD) {
-                            name("&b${p.name}")
-                            lore("&7Health: &c${p.health.toInt()}&7/20", "&7Level: &a${p.level}")
-                        }
-                        onClick { viewer ->
-                            viewer.teleport(p.location)
-                            viewer.sendMessage("&a✓ Teleported to ${p.name}".mm())
-                        }
+                slot(11) {
+                    item(Material.DIAMOND) {
+                        name = "&bDiamond"
+                        lore("&7Price: 100 coins", "&8Click to buy")
+                    }
+                    onClick { _: Player, _: org.bukkit.event.inventory.ClickType ->
+                        player.sendMessage("&aDiamond purchased".mm())
                     }
                 }
 
-                // Navigation
-                if (hasPrevious()) {
-                    slot(45) {
-                        item(Material.ARROW) {
-                            name("&c◀ Previous")
-                        }
-                        onClick { _ ->
-                            prevPage()
-                        }
+                slot(15) {
+                    val closeHandler: suspend MenuClickContext.() -> Unit = {
+                        close()
                     }
-                }
-
-                if (hasNext()) {
-                    slot(53) {
-                        item(Material.ARROW) {
-                            name("&a▶ Next")
-                        }
-                        onClick { _ ->
-                            nextPage()
-                        }
+                    item(Material.BARRIER) {
+                        name = "&cClose"
                     }
+                    onClick(closeHandler)
                 }
-            }
-
-            onClose {
-                player.sendMessage("&8Player list closed".mm())
-            }
-        }
+            },
+        )
     }
 
-    private suspend fun openServerStatus(player: Player) {
-        player.openMenu {
-            title = "&b&lServer Status"
-            rows = 3
+    private fun openPlayerList(player: Player) {
+        val players = Bukkit.getOnlinePlayers().toList()
+        player.openMenu(
+            menu("&b&lPlayers", rows = 6) {
+                fill { name = " " }
 
-            fill { name(" ") }
+                pagination(itemsPerPage = 45) {
+                    val pagePlayers = pageItems(players)
+                    pageCount(players.size)
 
-            slot(11) {
-                item(Material.CLOCK) {
-                    name("&aTPS")
-                    lore("&7Loading...")
+                    pagePlayers.forEachIndexed { index, target ->
+                        slot(index) {
+                            item(Material.PLAYER_HEAD) {
+                                name = "&b${target.name}"
+                                lore("&7Click to teleport")
+                                skullOwner(target)
+                            }
+                            onClick { _: Player, _: org.bukkit.event.inventory.ClickType ->
+                                player.teleport(target.location)
+                            }
+                        }
+                    }
+
+                    if (hasPrevious()) {
+                        slot(45) {
+                            val previousHandler: suspend MenuClickContext.() -> Unit = {
+                                previousPage()
+                            }
+                            item(Material.ARROW) { name = "&cPrevious" }
+                            onClick(previousHandler)
+                        }
+                    }
+
+                    if (hasNext()) {
+                        slot(53) {
+                            val nextHandler: suspend MenuClickContext.() -> Unit = {
+                                nextPage()
+                            }
+                            item(Material.ARROW) { name = "&aNext" }
+                            onClick(nextHandler)
+                        }
+                    }
                 }
-            }
-
-            slot(13) {
-                item(Material.PLAYER_HEAD) {
-                    name("&bPlayers")
-                    lore("&7Loading...")
-                }
-            }
-
-            slot(15) {
-                item(Material.DIAMOND) {
-                    name("&6Performance")
-                    lore("&7Loading...")
-                }
-            }
-
-            onOpen { _ ->
-                // Static display for now - dynamic updates can be added later
-                // when needed with proper scope handling
-            }
-        }
+            },
+        )
     }
 
     override fun onDisable() {
         DaisyMenu.shutdown()
-        logger.info("DaisyMenu Example Plugin disabled!")
     }
 }

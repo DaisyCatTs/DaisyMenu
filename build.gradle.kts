@@ -30,6 +30,11 @@ dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib:${versions["kotlin"]}")
     compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core:${versions["coroutines"]}")
 
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
+    testImplementation("com.github.seeseemelk:MockBukkit-v1.21:3.133.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${versions["coroutines"]}")
+
     ktlint("com.pinterest.ktlint:ktlint-cli:${versions["ktlint"]}") {
         attributes {
             attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
@@ -55,7 +60,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
     compilerOptions {
         freeCompilerArgs.addAll(
             "-opt-in=kotlin.RequiresOptIn",
-            "-Xjvm-default=all",
+            "-jvm-default=no-compatibility",
         )
         jvmTarget.set(JvmTarget.fromTarget(targetJavaVersion.toString()))
     }
@@ -70,6 +75,10 @@ val ktlintCheck by tasks.registering(JavaExec::class) {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     check {
         dependsOn("ktlintFormat")
     }
@@ -118,7 +127,7 @@ publishing {
 
             pom {
                 name.set("DaisyMenu")
-                description.set("The #1 Kotlin GUI Library for Paper Minecraft Servers")
+                description.set("Kotlin-first menu library for Paper")
                 url.set("https://github.com/fu3i0n/DaisyMenu")
 
                 licenses {
