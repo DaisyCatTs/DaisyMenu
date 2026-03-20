@@ -1,127 +1,384 @@
 package cat.daisy.menu
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.inventory.Inventory
-import org.bukkit.scheduler.BukkitTask
+import org.bukkit.inventory.InventoryHolder
+import org.bukkit.inventory.ItemStack
 
 /**
- * Represents an in-game menu inventory built with [MenuBuilder].
+ * Immutable menu definition that can be opened for many viewers.
  */
-public class Menu(
+public class Menu internal constructor(
     public val title: Component,
     public val rows: Int,
-    internal val slots: MutableMap<Int, Button> = mutableMapOf(),
-    internal val openCallbacks: MutableList<suspend (Menu) -> Unit> = mutableListOf(),
-    internal val closeCallbacks: MutableList<suspend (Menu) -> Unit> = mutableListOf(),
-    internal val paginationHandler: PaginationHandler? = null,
+    internal val baseSlots: Array<SlotDefinition?>,
+    internal val openHandlers: List<suspend (MenuSession) -> Unit>,
+    internal val closeHandlers: List<suspend (MenuSession) -> Unit>,
+    internal val pagination: PaginationDefinition?,
 ) {
-    public lateinit var inventory: Inventory
-    public lateinit var viewer: Player
+    public val size: Int = rows * 9
 
-    private val updateTasks = mutableListOf<BukkitTask>()
-    private var isClosed = false
-    private var baseSlots: MutableMap<Int, Button> = slots.toMutableMap()
-    private var currentPage = 0
+    public fun open(player: Player): MenuSession = MenuSession(this, player).also(MenuSession::open)
+}
 
-    public suspend fun open(player: Player) {
-        require(rows in 1..6) { "Menu rows must be between 1 and 6, got $rows" }
+/**
+ * Build an immutable [Menu] with a Kotlin DSL.
+ */
+public fun menu(
+    title: String,
+    rows: Int = 3,
+    block: MenuBuilder.() -> Unit,
+): Menu = MenuBuilder(title, rows).apply(block).build()
 
-        viewer = player
-        inventory = Bukkit.createInventory(player, rows * 9, title)
+/**
+ * Per-viewer runtime session for an opened [Menu].
+ */
+public class MenuSession internal constructor(
+    public val menu: Menu,
+    public val player: Player,
+) {
+    private val renderMutex = Mutex()
+    private val holder = MenuInventoryHolder(this)
+    private val sessionScope: CoroutineScope = DaisyMenu.createSessionScope("menu:${player.uniqueId}")
+    private val activeDefinitions: Array<SlotDefinition?> = arrayOfNulls(menu.size)
+    private val renderedItems: Array<ItemStack?> = arrayOfNulls(menu.size)
+    private val slotRefreshes: Array<ManagedRefresh?> = arrayOfNulls(menu.size)
+    private val sessionRefreshes = mutableListOf<ManagedRefresh>()
+    private var closed = false
+    private var page: Int = 0
+    private var totalPages: Int = 1
 
-        DaisyMenu.registerMenu(this, inventory)
+    public val inventory: Inventory = Bukkit.createInventory(holder, menu.size, menu.title)
+    public val currentPage: Int
+        get() = page
 
-        openCallbacks.forEach { it.invoke(this) }
-        baseSlots = slots.toMutableMap()
-        render()
-
-        Bukkit.getScheduler().scheduleSyncDelayedTask(DaisyMenu.getPlugin()) {
+    internal fun open() {
+        sessionScope.launch {
+            renderAll()
+            if (closed) {
+                return@launch
+            }
+            DaisyMenu.registerSession(this@MenuSession)
             player.openInventory(inventory)
+            invokeHandlers(menu.openHandlers, "open")
         }
     }
 
     public fun close() {
-        if (!isClosed) {
-            isClosed = true
-            viewer.closeInventory()
+        if (closed) {
+            return
+        }
+        DaisyMenu.runOnMain {
+            if (!closed) {
+                player.closeInventory()
+            }
         }
     }
 
-    internal fun invokeClose() {
-        updateTasks.forEach { it.cancel() }
-        DaisyMenu.getScope().launch {
-            closeCallbacks.forEach { it.invoke(this@Menu) }
+    public fun invalidate() {
+        if (closed) {
+            return
+        }
+        sessionScope.launch {
+            renderAll()
         }
     }
 
-    public fun updateSlot(
-        slot: Int,
-        button: Button,
-    ) {
-        baseSlots[slot] = button
-        slots[slot] = button
-        inventory.setItem(slot, button.itemStack)
+    public fun invalidate(slot: Int) {
+        require(slot in 0 until menu.size) { "Slot $slot is out of range (0-${menu.size - 1})" }
+        if (closed) {
+            return
+        }
+        sessionScope.launch {
+            renderSlots(intArrayOf(slot))
+        }
     }
 
-    public fun repeatUpdate(
+    public fun refreshEvery(
         ticks: Long,
-        block: suspend () -> Unit,
+        block: suspend MenuSession.() -> Unit,
+    ): Cancellable {
+        require(ticks > 0) { "Refresh interval must be greater than 0 ticks" }
+        val managedRefresh =
+            ManagedRefresh(
+                ticks = ticks,
+                sessionScope = sessionScope,
+                invoke = {
+                    block(this)
+                },
+            )
+        sessionRefreshes += managedRefresh
+        managedRefresh.start()
+        return managedRefresh
+    }
+
+    internal fun handleTopClick(
+        slot: Int,
+        clickType: ClickType,
     ) {
-        val task =
+        if (closed) {
+            return
+        }
+        val definition = activeDefinitions.getOrNull(slot) ?: return
+        val clickHandler = definition.clickHandler ?: return
+        sessionScope.launch {
+            clickHandler.invoke(MenuClickContext(this@MenuSession, slot, clickType))
+        }
+    }
+
+    internal fun handleInventoryClose() {
+        if (closed) {
+            return
+        }
+        closed = true
+        DaisyMenu.unregisterSession(this)
+        cancelRefreshes()
+        sessionScope.cancel()
+        DaisyMenu.scope().launch {
+            invokeHandlers(menu.closeHandlers, "close")
+        }
+    }
+
+    internal suspend fun previousPage() {
+        val target = (page - 1).coerceAtLeast(0)
+        if (target == page) {
+            return
+        }
+        page = target
+        renderAll()
+    }
+
+    internal suspend fun nextPage() {
+        val target = (page + 1).coerceAtMost(totalPages - 1)
+        if (target == page) {
+            return
+        }
+        page = target
+        renderAll()
+    }
+
+    internal fun clampPage(pageCount: Int) {
+        page = page.coerceIn(0, pageCount.coerceAtLeast(1) - 1)
+    }
+
+    internal fun updatePageCount(pageCount: Int) {
+        totalPages = pageCount.coerceAtLeast(1)
+        clampPage(totalPages)
+    }
+
+    private suspend fun renderAll() {
+        renderSlots((0 until menu.size).toList().toIntArray())
+    }
+
+    private suspend fun renderSlots(slots: IntArray) {
+        renderMutex.withLock {
+            val nextDefinitions = buildDefinitions()
+            slots.forEach { slot ->
+                val definition = nextDefinitions[slot]
+                activeDefinitions[slot] = definition
+                syncSlotRefresh(slot, definition)
+                val nextItem = definition?.render(this, slot)
+                applyRenderedItem(slot, nextItem)
+            }
+        }
+    }
+
+    private suspend fun buildDefinitions(): Array<SlotDefinition?> {
+        val definitions = menu.baseSlots.copyOf()
+        val pagination = menu.pagination ?: return definitions.also { totalPages = 1 }
+        val scope = PaginationScope(this, pagination.itemsPerPage)
+        pagination.block.invoke(scope)
+        scope.pageSlots.forEach { (slot, definition) ->
+            definitions[slot] = definition
+        }
+        return definitions
+    }
+
+    private fun applyRenderedItem(
+        slot: Int,
+        nextItem: ItemStack?,
+    ) {
+        val previous = renderedItems[slot]
+        if (previous == nextItem) {
+            return
+        }
+        renderedItems[slot] = nextItem?.clone()
+        inventory.setItem(slot, nextItem?.clone())
+    }
+
+    private fun syncSlotRefresh(
+        slot: Int,
+        definition: SlotDefinition?,
+    ) {
+        val existing = slotRefreshes[slot]
+        val refreshTicks = definition?.refreshTicks
+        val renderer = definition?.renderer
+        if (refreshTicks == null || renderer == null) {
+            existing?.cancel()
+            slotRefreshes[slot] = null
+            return
+        }
+
+        if (existing != null && existing.matches(definition, refreshTicks)) {
+            return
+        }
+
+        existing?.cancel()
+        val managedRefresh =
+            ManagedRefresh(
+                ticks = refreshTicks,
+                sessionScope = sessionScope,
+                definition = definition,
+                invoke = {
+                    invalidate(slot)
+                },
+            )
+        managedRefresh.start()
+        slotRefreshes[slot] = managedRefresh
+    }
+
+    private suspend fun invokeHandlers(
+        handlers: List<suspend (MenuSession) -> Unit>,
+        phase: String,
+    ) {
+        handlers.forEach { handler ->
+            runCatching {
+                handler(this)
+            }.onFailure { throwable ->
+                DaisyMenu.logFailure("menu $phase callback", throwable)
+            }
+        }
+    }
+
+    private fun cancelRefreshes() {
+        slotRefreshes.forEach { it?.cancel() }
+        sessionRefreshes.forEach(ManagedRefresh::cancel)
+        sessionRefreshes.clear()
+    }
+}
+
+public fun interface Cancellable {
+    public fun cancel()
+}
+
+public class MenuRenderContext internal constructor(
+    public val session: MenuSession,
+    public val slot: Int,
+) {
+    public val player: Player
+        get() = session.player
+    public val menu: Menu
+        get() = session.menu
+    public val currentPage: Int
+        get() = session.currentPage
+}
+
+public class MenuClickContext internal constructor(
+    public val session: MenuSession,
+    public val slot: Int,
+    public val clickType: ClickType,
+) {
+    public val player: Player
+        get() = session.player
+    public val menu: Menu
+        get() = session.menu
+    public val currentPage: Int
+        get() = session.currentPage
+
+    public fun close() {
+        session.close()
+    }
+
+    public fun invalidate() {
+        session.invalidate()
+    }
+
+    public fun invalidate(slot: Int) {
+        session.invalidate(slot)
+    }
+
+    public suspend fun previousPage() {
+        session.previousPage()
+    }
+
+    public suspend fun nextPage() {
+        session.nextPage()
+    }
+}
+
+internal class SlotDefinition(
+    item: ItemStack? = null,
+    internal val renderer: (MenuRenderContext.() -> ItemStack)? = null,
+    internal val clickHandler: (suspend MenuClickContext.() -> Unit)? = null,
+    internal val refreshTicks: Long? = null,
+) {
+    private val staticItem: ItemStack? = item?.clone()
+
+    internal fun previewItem(): ItemStack? = staticItem?.clone()
+
+    internal fun render(
+        session: MenuSession,
+        slot: Int,
+    ): ItemStack? {
+        val dynamicItem = renderer?.invoke(MenuRenderContext(session, slot))
+        return (dynamicItem ?: staticItem)?.clone()
+    }
+}
+
+internal class MenuInventoryHolder(
+    val session: MenuSession,
+) : InventoryHolder {
+    override fun getInventory(): Inventory = session.inventory
+}
+
+private class ManagedRefresh(
+    private val ticks: Long,
+    private val sessionScope: CoroutineScope,
+    private val invoke: suspend () -> Unit,
+    private val definition: SlotDefinition? = null,
+) : Cancellable {
+    private var task: org.bukkit.scheduler.BukkitTask? = null
+    private var running: Boolean = false
+
+    fun start() {
+        task =
             Bukkit.getScheduler().runTaskTimer(
-                DaisyMenu.getPlugin(),
+                DaisyMenu.plugin(),
                 Runnable {
-                    DaisyMenu.getScope().launch {
-                        block.invoke()
+                    if (running) {
+                        return@Runnable
+                    }
+                    running = true
+                    sessionScope.launch {
+                        try {
+                            invoke()
+                        } catch (throwable: Throwable) {
+                            DaisyMenu.logFailure("menu refresh", throwable)
+                        } finally {
+                            running = false
+                        }
                     }
                 },
-                0L,
+                ticks,
                 ticks,
             )
-        updateTasks.add(task)
     }
 
-    public fun updateSlot(
-        slot: Int,
-        block: SlotBuilder.() -> Unit,
-    ) {
-        val slotBuilder = SlotBuilder()
-        slotBuilder.apply(block)
-        updateSlot(slot, slotBuilder.build())
-    }
+    fun matches(
+        otherDefinition: SlotDefinition,
+        otherTicks: Long,
+    ): Boolean = definition === otherDefinition && ticks == otherTicks
 
-    public fun fill(button: Button) {
-        for (i in 0 until (rows * 9)) {
-            if (!baseSlots.containsKey(i)) {
-                baseSlots[i] = button
-                slots[i] = button
-                inventory.setItem(i, button.itemStack)
-            }
-        }
-    }
-
-    private suspend fun render() {
-        inventory.clear()
-        slots.clear()
-        slots.putAll(baseSlots)
-
-        paginationHandler?.let { handler ->
-            val paginationBuilder = PaginationBuilder(handler.itemsPerPage)
-            paginationBuilder.currentPage = currentPage
-            paginationBuilder.pageChangeAction = { newPage ->
-                currentPage = newPage
-                render()
-            }
-            handler.block.invoke(paginationBuilder)
-            slots.putAll(paginationBuilder.buttons)
-        }
-
-        slots.forEach { (slot, button) ->
-            require(slot in 0 until rows * 9) { "Slot $slot is out of range (0-${rows * 9 - 1})" }
-            inventory.setItem(slot, button.itemStack)
-        }
+    override fun cancel() {
+        task?.cancel()
+        task = null
     }
 }
