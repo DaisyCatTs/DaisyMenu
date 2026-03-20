@@ -1,98 +1,130 @@
 package cat.daisy.menu
 
+import org.bukkit.Material
+import org.bukkit.inventory.ItemStack
+
 /**
- * Handles pagination for multi-page menus.
+ * Runtime pagination helpers for page-aware menu content.
  */
-public class PaginationHandler(
+public class PaginationScope internal constructor(
+    private val session: MenuSession,
     public val itemsPerPage: Int,
-    public val block: suspend PaginationBuilder.() -> Unit,
-)
-
-/**
- * Builder for pagination UI.
- * Provides slot() method for defining buttons within paginated context.
- */
-public class PaginationBuilder(
-    public var itemsPerPage: Int = 45,
-    internal val buttons: MutableMap<Int, Button> = mutableMapOf(),
 ) {
-    public var currentPage: Int = 0
-    public var totalPages: Int = 1
-    internal var pageChangeAction: (suspend (Int) -> Unit)? = null
-    private var previousAction: (suspend () -> Unit)? = null
-    private var nextAction: (suspend () -> Unit)? = null
+    internal val pageSlots = mutableMapOf<Int, SlotDefinition>()
+    private var computedPageCount: Int = 1
 
-    /**
-     * Set total number of pages.
-     */
-    public fun totalPages(count: Int) {
-        this.totalPages = count
+    public val currentPage: Int
+        get() = session.currentPage
+
+    public fun pageCount(totalItems: Int): Int {
+        require(totalItems >= 0) { "Total items must be at least 0" }
+        computedPageCount =
+            if (totalItems == 0) {
+                1
+            } else {
+                ((totalItems - 1) / itemsPerPage) + 1
+            }
+        session.updatePageCount(computedPageCount)
+        return computedPageCount
     }
 
-    /**
-     * Get items for the current page.
-     */
-    public fun pageItems(): IntRange {
-        val start = currentPage * itemsPerPage
-        val end = minOf(start + itemsPerPage, totalPages * itemsPerPage)
-        return start until end
+    public fun pageRange(totalItems: Int): IntRange {
+        pageCount(totalItems)
+        val start = session.currentPage * itemsPerPage
+        val endExclusive = minOf(totalItems, start + itemsPerPage)
+        if (start >= endExclusive) {
+            return IntRange.EMPTY
+        }
+        return start until endExclusive
     }
 
-    /**
-     * Define a button at a specific slot within pagination context.
-     */
+    public fun <T> pageItems(items: List<T>): List<T> {
+        val range = pageRange(items.size)
+        if (range.isEmpty()) {
+            return emptyList()
+        }
+        return items.subList(range.first, range.last + 1)
+    }
+
+    public fun hasPrevious(): Boolean = session.currentPage > 0
+
+    public fun hasNext(): Boolean = session.currentPage < computedPageCount - 1
+
+    public suspend fun previousPage() {
+        session.previousPage()
+    }
+
+    public suspend fun nextPage() {
+        session.nextPage()
+    }
+
+    public fun slot(
+        index: Int,
+        button: Button,
+    ) {
+        pageSlots[index] = button.definition
+    }
+
     public fun slot(
         index: Int,
         block: SlotBuilder.() -> Unit,
     ) {
-        val slotBuilder = SlotBuilder()
-        slotBuilder.apply(block)
-        buttons[index] = slotBuilder.build()
+        pageSlots[index] = SlotBuilder().apply(block).build()
     }
 
-    /**
-     * Register previous page action.
-     */
-    public fun previous(action: suspend () -> Unit) {
-        previousAction = action
-    }
-
-    /**
-     * Register next page action.
-     */
-    public fun next(action: suspend () -> Unit) {
-        nextAction = action
-    }
-
-    /**
-     * Move to previous page.
-     */
-    public suspend fun prevPage() {
-        if (currentPage > 0) {
-            currentPage--
-            pageChangeAction?.invoke(currentPage)
-            previousAction?.invoke()
+    public fun previousButton(
+        index: Int,
+        block: SlotBuilder.() -> Unit = {},
+    ) {
+        if (!hasPrevious()) {
+            return
         }
+        pageSlots[index] = navigationButton("&cPrevious", block) { previousPage() }
     }
 
-    /**
-     * Move to next page.
-     */
-    public suspend fun nextPage() {
-        if (currentPage < totalPages - 1) {
-            currentPage++
-            pageChangeAction?.invoke(currentPage)
-            nextAction?.invoke()
+    public fun nextButton(
+        index: Int,
+        block: SlotBuilder.() -> Unit = {},
+    ) {
+        if (!hasNext()) {
+            return
         }
+        pageSlots[index] = navigationButton("&aNext", block) { nextPage() }
     }
 
-    /**
-     * Check if previous page exists.
-     */
-    public fun hasPrevious(): Boolean = currentPage > 0
+    public fun pageLabel(
+        index: Int,
+        block: (currentPage: Int, totalPages: Int) -> ItemStack,
+    ) {
+        pageSlots[index] =
+            SlotBuilder()
+                .apply {
+                    render {
+                        block(currentPage + 1, totalPages)
+                    }
+                }.build()
+    }
 
-    /**
-     * Check if next page exists.
-     */
-    public fun hasNext(): Boolean = currentPage < totalPages - 1
+    private fun navigationButton(
+        defaultName: String,
+        block: SlotBuilder.() -> Unit,
+        action: suspend MenuClickContext.() -> Unit,
+    ): SlotDefinition {
+        val builder =
+            SlotBuilder().apply {
+                item(Material.ARROW) {
+                    name = defaultName
+                }
+            }
+        builder.apply(block)
+        if (!builder.hasClickBindings()) {
+            builder.onClick(action)
+        }
+        return builder.build()
+    }
 }
+
+internal class PaginationDefinition(
+    val itemsPerPage: Int,
+    val block: suspend PaginationScope.() -> Unit,
+)

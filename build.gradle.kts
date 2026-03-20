@@ -3,13 +3,13 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 val ktlint by configurations.creating
 
 plugins {
-    kotlin("jvm") version "2.3.0"
+    kotlin("jvm") version "2.3.20"
     `maven-publish`
     `java-library`
 }
 
-group = "com.github.fu3i0n"
-version = "1.1.0"
+group = "com.github.DaisyCatTs"
+version = "2.0.0"
 
 repositories {
     mavenCentral()
@@ -19,8 +19,8 @@ repositories {
 
 val versions =
     mapOf(
-        "paperApi" to "1.21.10-R0.1-SNAPSHOT",
-        "kotlin" to "2.3.0",
+        "paperApi" to "1.21.11-R0.1-SNAPSHOT",
+        "kotlin" to "2.3.20",
         "ktlint" to "1.8.0",
         "coroutines" to "1.10.2",
     )
@@ -29,6 +29,11 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:${versions["paperApi"]}")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib:${versions["kotlin"]}")
     compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core:${versions["coroutines"]}")
+
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
+    testImplementation("com.github.seeseemelk:MockBukkit-v1.21:3.133.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:${versions["coroutines"]}")
 
     ktlint("com.pinterest.ktlint:ktlint-cli:${versions["ktlint"]}") {
         attributes {
@@ -55,7 +60,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
     compilerOptions {
         freeCompilerArgs.addAll(
             "-opt-in=kotlin.RequiresOptIn",
-            "-Xjvm-default=all",
+            "-jvm-default=no-compatibility",
         )
         jvmTarget.set(JvmTarget.fromTarget(targetJavaVersion.toString()))
     }
@@ -70,8 +75,12 @@ val ktlintCheck by tasks.registering(JavaExec::class) {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     check {
-        dependsOn("ktlintFormat")
+        dependsOn(ktlintCheck)
     }
 
     register<JavaExec>("ktlintFormat") {
@@ -101,7 +110,7 @@ tasks {
             attributes(
                 "Implementation-Title" to "DaisyMenu",
                 "Implementation-Version" to version,
-                "Implementation-Vendor" to "fu3i0n",
+                "Implementation-Vendor" to "DaisyCatTs",
             )
         }
     }
@@ -112,14 +121,14 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            groupId = "com.github.fu3i0n"
+            groupId = "com.github.DaisyCatTs"
             artifactId = "DaisyMenu"
             version = project.version.toString()
 
             pom {
                 name.set("DaisyMenu")
-                description.set("The #1 Kotlin GUI Library for Paper Minecraft Servers")
-                url.set("https://github.com/fu3i0n/DaisyMenu")
+                description.set("Kotlin-first menu library for Paper")
+                url.set("https://github.com/DaisyCatTs/DaisyMenu")
 
                 licenses {
                     license {
@@ -130,16 +139,16 @@ publishing {
 
                 developers {
                     developer {
-                        id.set("fu3i0n")
-                        name.set("fu3i0n")
-                        url.set("https://github.com/fu3i0n")
+                        id.set("DaisyCatTs")
+                        name.set("DaisyCatTs")
+                        url.set("https://github.com/DaisyCatTs")
                     }
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/fu3i0n/DaisyMenu.git")
-                    developerConnection.set("scm:git:ssh://github.com/fu3i0n/DaisyMenu.git")
-                    url.set("https://github.com/fu3i0n/DaisyMenu")
+                    connection.set("scm:git:git://github.com/DaisyCatTs/DaisyMenu.git")
+                    developerConnection.set("scm:git:ssh://github.com/DaisyCatTs/DaisyMenu.git")
+                    url.set("https://github.com/DaisyCatTs/DaisyMenu")
                 }
             }
         }
