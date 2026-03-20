@@ -13,6 +13,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
+import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryCloseEvent
@@ -27,7 +28,13 @@ public object DaisyMenu {
     private val blockedBottomActions =
         setOf(
             InventoryAction.COLLECT_TO_CURSOR,
+            InventoryAction.HOTBAR_MOVE_AND_READD,
             InventoryAction.MOVE_TO_OTHER_INVENTORY,
+        )
+
+    private val blockedBottomClicks =
+        setOf(
+            ClickType.DOUBLE_CLICK,
         )
 
     private var plugin: Plugin? = null
@@ -60,13 +67,16 @@ public object DaisyMenu {
                     }
 
                     val rawSlot = event.rawSlot
+                    if (rawSlot < 0) {
+                        return
+                    }
                     if (rawSlot in 0 until session.menu.size) {
                         event.isCancelled = true
                         session.handleTopClick(rawSlot, event.click)
                         return
                     }
 
-                    if (event.action in blockedBottomActions) {
+                    if (shouldCancelBottomInteraction(event)) {
                         event.isCancelled = true
                     }
                 }
@@ -151,5 +161,15 @@ public object DaisyMenu {
     private fun resolveSession(event: InventoryDragEvent): MenuSession? {
         val holder = event.view.topInventory.holder as? MenuInventoryHolder ?: return null
         return holder.session
+    }
+
+    private fun shouldCancelBottomInteraction(event: InventoryClickEvent): Boolean {
+        if (event.action in blockedBottomActions) {
+            return true
+        }
+        if (event.click in blockedBottomClicks) {
+            return true
+        }
+        return false
     }
 }

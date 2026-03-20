@@ -19,20 +19,21 @@ public class MenuBuilder(
     private val closeHandlers = mutableListOf<suspend (MenuSession) -> Unit>()
     private var pagination: PaginationDefinition? = null
 
+    internal val size: Int
+        get() = rows * 9
+
     public fun slot(
         index: Int,
         button: Button,
     ) {
-        slots[index] = button.definition
+        setSlotDefinition(index, button.definition)
     }
 
     public fun slot(
         index: Int,
         block: SlotBuilder.() -> Unit,
     ) {
-        val builder = SlotBuilder()
-        builder.apply(block)
-        slots[index] = builder.build()
+        setSlotDefinition(index, SlotBuilder().apply(block).build())
     }
 
     public fun slot(
@@ -54,8 +55,8 @@ public class MenuBuilder(
         block: ItemBuilder.() -> Unit = {},
     ) {
         val definition = SlotBuilder().apply { item(material, block) }.build()
-        repeat(rows * 9) { slot ->
-            slots.putIfAbsent(slot, definition)
+        repeat(size) { slot ->
+            setSlotDefinition(slot, definition, overwrite = false)
         }
     }
 
@@ -64,7 +65,9 @@ public class MenuBuilder(
         block: SlotBuilder.() -> Unit,
     ) {
         val definition = SlotBuilder().apply(block).build()
-        indices.forEach { slots[it] = definition }
+        indices.forEach { index ->
+            setSlotDefinition(index, definition)
+        }
     }
 
     public fun fillRow(
@@ -75,7 +78,7 @@ public class MenuBuilder(
         val definition = SlotBuilder().apply(block).build()
         val start = (row - 1) * 9
         for (slot in start until start + 9) {
-            slots[slot] = definition
+            setSlotDefinition(slot, definition)
         }
     }
 
@@ -86,7 +89,7 @@ public class MenuBuilder(
         require(column in 1..9) { "Column must be between 1 and 9" }
         val definition = SlotBuilder().apply(block).build()
         for (row in 0 until rows) {
-            slots[(row * 9) + (column - 1)] = definition
+            setSlotDefinition((row * 9) + (column - 1), definition)
         }
     }
 
@@ -95,16 +98,11 @@ public class MenuBuilder(
         block: ItemBuilder.() -> Unit = {},
     ) {
         val definition = SlotBuilder().apply { item(material, block) }.build()
-        for (slot in 0 until 9) {
-            slots[slot] = definition
-        }
-        val bottomStart = (rows - 1) * 9
-        for (slot in bottomStart until bottomStart + 9) {
-            slots[slot] = definition
-        }
+        topRowSlots().forEach { slot -> setSlotDefinition(slot, definition) }
+        bottomRowSlots().forEach { slot -> setSlotDefinition(slot, definition) }
         for (row in 1 until rows - 1) {
-            slots[row * 9] = definition
-            slots[(row * 9) + 8] = definition
+            setSlotDefinition(row * 9, definition)
+            setSlotDefinition((row * 9) + 8, definition)
         }
     }
 
@@ -137,6 +135,10 @@ public class MenuBuilder(
         pagination = PaginationDefinition(itemsPerPage, block)
     }
 
+    public fun template(block: MenuTemplateBuilder.() -> Unit) {
+        MenuTemplateBuilder(this).apply(block)
+    }
+
     public fun onOpen(block: suspend (MenuSession) -> Unit) {
         openHandlers += block
     }
@@ -149,10 +151,9 @@ public class MenuBuilder(
         require(title.isNotBlank()) { "Menu title cannot be blank" }
         require(rows in 1..6) { "Menu rows must be between 1 and 6, got $rows" }
 
-        val size = rows * 9
         val definitions: Array<SlotDefinition?> = arrayOfNulls(size)
         slots.forEach { (slot, definition) ->
-            require(slot in 0 until size) { "Slot $slot is out of range (0-${size - 1})" }
+            validateSlotIndex(slot)
             definitions[slot] = definition
         }
 
@@ -165,6 +166,35 @@ public class MenuBuilder(
             pagination = pagination,
         )
     }
+
+    internal fun validateSlotIndex(slot: Int) {
+        require(slot in 0 until size) { "Slot $slot is out of range (0-${size - 1})" }
+    }
+
+    internal fun setSlotDefinition(
+        slot: Int,
+        definition: SlotDefinition,
+        overwrite: Boolean = true,
+    ) {
+        validateSlotIndex(slot)
+        if (overwrite) {
+            slots[slot] = definition
+        } else {
+            slots.putIfAbsent(slot, definition)
+        }
+    }
+
+    internal fun removeSlotDefinition(slot: Int) {
+        validateSlotIndex(slot)
+        slots.remove(slot)
+    }
+
+    internal fun topRowSlots(): IntRange = 0..8
+
+    internal fun bottomRowSlots(): IntRange {
+        val start = (rows - 1) * 9
+        return start until start + 9
+    }
 }
 
 /**
@@ -176,9 +206,9 @@ public class SlotBuilder {
             field = value?.clone()
         }
 
-    private var renderer: (MenuRenderContext.() -> ItemStack)? = null
-    private var clickHandler: MenuClickAction? = null
+    private var renderer: (MenuRenderContext.() -> ItemStack?)? = null
     private var refreshTicks: Long? = null
+    private val clickBindings = mutableListOf<MenuClickBinding>()
 
     public fun item(
         material: Material,
@@ -187,7 +217,7 @@ public class SlotBuilder {
         item = ItemBuilder(material).apply(block).build()
     }
 
-    public fun render(block: MenuRenderContext.() -> ItemStack) {
+    public fun render(block: MenuRenderContext.() -> ItemStack?) {
         renderer = block
     }
 
@@ -198,28 +228,78 @@ public class SlotBuilder {
 
     @JvmName("onClickContext")
     public fun onClick(handler: suspend MenuClickContext.() -> Unit) {
-        clickHandler = onMenuClick(handler)
+        addClickBinding({ true }, onMenuClick(handler))
     }
 
-    @JvmName("onClickPlayer")
-    public fun onClick(handler: suspend (Player) -> Unit) {
-        clickHandler =
+    public fun onPlayerClick(handler: suspend Player.() -> Unit) {
+        addClickBinding(
+            { true },
             onMenuClick {
-                handler(player)
-            }
+                player.handler()
+            },
+        )
     }
 
     @JvmName("onClickPlayerAndClickType")
     public fun onClick(handler: suspend (Player, ClickType) -> Unit) {
-        clickHandler =
+        addClickBinding(
+            { true },
             onMenuClick {
                 handler(player, clickType)
-            }
+            },
+        )
     }
 
     public fun onClick(action: MenuClickAction) {
-        clickHandler = action
+        addClickBinding({ true }, action)
     }
+
+    public fun onLeftClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType.isLeftClick }, onMenuClick(handler))
+    }
+
+    public fun onRightClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType.isRightClick }, onMenuClick(handler))
+    }
+
+    public fun onShiftClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType.isShiftClick }, onMenuClick(handler))
+    }
+
+    public fun onMiddleClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding({ clickType -> clickType == ClickType.MIDDLE }, onMenuClick(handler))
+    }
+
+    public fun onDropClick(handler: suspend MenuClickContext.() -> Unit) {
+        addClickBinding(
+            { clickType -> clickType == ClickType.DROP || clickType == ClickType.CONTROL_DROP },
+            onMenuClick(handler),
+        )
+    }
+
+    public fun closeOnClick() {
+        onClick(
+            onMenuClick {
+                close()
+            },
+        )
+    }
+
+    public fun invalidateOnClick(vararg slots: Int) {
+        onClick(
+            onMenuClick {
+                if (slots.isEmpty()) {
+                    invalidate()
+                } else {
+                    invalidate(*slots)
+                }
+            },
+        )
+    }
+
+    internal fun hasVisualState(): Boolean = item != null || renderer != null
+
+    internal fun hasClickBindings(): Boolean = clickBindings.isNotEmpty()
 
     internal fun build(): SlotDefinition {
         if (refreshTicks != null) {
@@ -228,9 +308,16 @@ public class SlotBuilder {
         return SlotDefinition(
             item = item,
             renderer = renderer,
-            clickHandler = clickHandler,
+            clickBindings = clickBindings.toList(),
             refreshTicks = refreshTicks,
         )
+    }
+
+    private fun addClickBinding(
+        matcher: (ClickType) -> Boolean,
+        action: MenuClickAction,
+    ) {
+        clickBindings += MenuClickBinding(matcher, action)
     }
 }
 

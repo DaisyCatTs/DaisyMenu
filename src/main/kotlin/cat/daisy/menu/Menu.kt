@@ -60,6 +60,11 @@ public class MenuSession internal constructor(
     public val currentPage: Int
         get() = page
 
+    public fun hasOpenInventory(): Boolean = player.openInventory.topInventory.holder === holder
+
+    internal val pageCount: Int
+        get() = totalPages
+
     internal fun open() {
         sessionScope.launch {
             renderAll()
@@ -77,7 +82,7 @@ public class MenuSession internal constructor(
             return
         }
         DaisyMenu.runOnMain {
-            if (!closed) {
+            if (!closed && hasOpenInventory()) {
                 player.closeInventory()
             }
         }
@@ -93,12 +98,23 @@ public class MenuSession internal constructor(
     }
 
     public fun invalidate(slot: Int) {
-        require(slot in 0 until menu.size) { "Slot $slot is out of range (0-${menu.size - 1})" }
+        invalidateSlots(intArrayOf(slot))
+    }
+
+    public fun invalidate(vararg slots: Int) {
+        invalidateSlots(slots)
+    }
+
+    private fun invalidateSlots(slots: IntArray) {
+        slots.forEach { slot ->
+            require(slot in 0 until menu.size) { "Slot $slot is out of range (0-${menu.size - 1})" }
+        }
         if (closed) {
             return
         }
+        val uniqueSlots = slots.distinct().toIntArray()
         sessionScope.launch {
-            renderSlots(intArrayOf(slot))
+            renderSlots(uniqueSlots)
         }
     }
 
@@ -127,10 +143,9 @@ public class MenuSession internal constructor(
         if (closed) {
             return
         }
-        val definition = activeDefinitions.getOrNull(slot) ?: return
-        val clickHandler = definition.clickHandler ?: return
+        val action = activeDefinitions.getOrNull(slot)?.resolveClick(clickType) ?: return
         sessionScope.launch {
-            clickHandler.invoke(MenuClickContext(this@MenuSession, slot, clickType))
+            action.invoke(MenuClickContext(this@MenuSession, slot, clickType))
         }
     }
 
@@ -179,13 +194,20 @@ public class MenuSession internal constructor(
     }
 
     private suspend fun renderSlots(slots: IntArray) {
+        if (closed) {
+            return
+        }
         renderMutex.withLock {
+            if (closed) {
+                return
+            }
+
             val nextDefinitions = buildDefinitions()
             slots.forEach { slot ->
                 val definition = nextDefinitions[slot]
-                activeDefinitions[slot] = definition
                 syncSlotRefresh(slot, definition)
                 val nextItem = definition?.render(this, slot)
+                activeDefinitions[slot] = if (nextItem == null) null else definition
                 applyRenderedItem(slot, nextItem)
             }
         }
@@ -279,6 +301,8 @@ public class MenuRenderContext internal constructor(
         get() = session.menu
     public val currentPage: Int
         get() = session.currentPage
+    public val totalPages: Int
+        get() = session.pageCount
 }
 
 public class MenuClickContext internal constructor(
@@ -292,6 +316,8 @@ public class MenuClickContext internal constructor(
         get() = session.menu
     public val currentPage: Int
         get() = session.currentPage
+    public val totalPages: Int
+        get() = session.pageCount
 
     public fun close() {
         session.close()
@@ -305,6 +331,10 @@ public class MenuClickContext internal constructor(
         session.invalidate(slot)
     }
 
+    public fun invalidate(vararg slots: Int) {
+        session.invalidate(*slots)
+    }
+
     public suspend fun previousPage() {
         session.previousPage()
     }
@@ -312,6 +342,12 @@ public class MenuClickContext internal constructor(
     public suspend fun nextPage() {
         session.nextPage()
     }
+
+    public fun isShiftClick(): Boolean = clickType.isShiftClick
+
+    public fun isLeftClick(): Boolean = clickType.isLeftClick
+
+    public fun isRightClick(): Boolean = clickType.isRightClick
 }
 
 public class MenuClickAction internal constructor(
@@ -324,22 +360,38 @@ public class MenuClickAction internal constructor(
 
 public fun onMenuClick(handler: suspend MenuClickContext.() -> Unit): MenuClickAction = MenuClickAction(handler)
 
+internal class MenuClickBinding(
+    private val matcher: (ClickType) -> Boolean,
+    private val action: MenuClickAction,
+) {
+    fun matches(clickType: ClickType): Boolean = matcher(clickType)
+
+    fun action(): MenuClickAction = action
+}
+
 internal class SlotDefinition(
     item: ItemStack? = null,
-    internal val renderer: (MenuRenderContext.() -> ItemStack)? = null,
-    internal val clickHandler: MenuClickAction? = null,
+    internal val renderer: (MenuRenderContext.() -> ItemStack?)? = null,
+    private val clickBindings: List<MenuClickBinding> = emptyList(),
     internal val refreshTicks: Long? = null,
 ) {
     private val staticItem: ItemStack? = item?.clone()
 
     internal fun previewItem(): ItemStack? = staticItem?.clone()
 
+    internal fun resolveClick(clickType: ClickType): MenuClickAction? =
+        clickBindings
+            .firstOrNull { binding -> binding.matches(clickType) }
+            ?.action()
+
     internal fun render(
         session: MenuSession,
         slot: Int,
     ): ItemStack? {
-        val dynamicItem = renderer?.invoke(MenuRenderContext(session, slot))
-        return (dynamicItem ?: staticItem)?.clone()
+        if (renderer != null) {
+            return renderer.invoke(MenuRenderContext(session, slot))?.clone()
+        }
+        return staticItem?.clone()
     }
 }
 
@@ -390,5 +442,6 @@ private class ManagedRefresh(
     override fun cancel() {
         task?.cancel()
         task = null
+        running = false
     }
 }
