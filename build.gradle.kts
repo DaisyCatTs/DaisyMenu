@@ -8,8 +8,8 @@ plugins {
     `java-library`
 }
 
-group = "com.github.fu3i0n"
-version = "1.1.0"
+group = "com.github.DaisyCatTs"
+version = "2.0.0"
 
 repositories {
     mavenCentral()
@@ -19,7 +19,7 @@ repositories {
 
 val versions =
     mapOf(
-        "paperApi" to "1.21.10-R0.1-SNAPSHOT",
+        "paperApi" to "1.21.11-R0.1-SNAPSHOT",
         "kotlin" to "2.3.20",
         "ktlint" to "1.8.0",
         "coroutines" to "1.10.2",
@@ -80,7 +80,7 @@ tasks {
     }
 
     check {
-        dependsOn("ktlintFormat")
+        dependsOn(ktlintCheck)
     }
 
     register<JavaExec>("ktlintFormat") {
@@ -110,7 +110,7 @@ tasks {
             attributes(
                 "Implementation-Title" to "DaisyMenu",
                 "Implementation-Version" to version,
-                "Implementation-Vendor" to "fu3i0n",
+                "Implementation-Vendor" to "DaisyCatTs",
             )
         }
     }
@@ -121,14 +121,14 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            groupId = "com.github.fu3i0n"
+            groupId = "com.github.DaisyCatTs"
             artifactId = "DaisyMenu"
             version = project.version.toString()
 
             pom {
                 name.set("DaisyMenu")
                 description.set("Kotlin-first menu library for Paper")
-                url.set("https://github.com/fu3i0n/DaisyMenu")
+                url.set("https://github.com/DaisyCatTs/DaisyMenu")
 
                 licenses {
                     license {
@@ -139,16 +139,16 @@ publishing {
 
                 developers {
                     developer {
-                        id.set("fu3i0n")
-                        name.set("fu3i0n")
-                        url.set("https://github.com/fu3i0n")
+                        id.set("DaisyCatTs")
+                        name.set("DaisyCatTs")
+                        url.set("https://github.com/DaisyCatTs")
                     }
                 }
 
                 scm {
-                    connection.set("scm:git:git://github.com/fu3i0n/DaisyMenu.git")
-                    developerConnection.set("scm:git:ssh://github.com/fu3i0n/DaisyMenu.git")
-                    url.set("https://github.com/fu3i0n/DaisyMenu")
+                    connection.set("scm:git:git://github.com/DaisyCatTs/DaisyMenu.git")
+                    developerConnection.set("scm:git:ssh://github.com/DaisyCatTs/DaisyMenu.git")
+                    url.set("https://github.com/DaisyCatTs/DaisyMenu")
                 }
             }
         }

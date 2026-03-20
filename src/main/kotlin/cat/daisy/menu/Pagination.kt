@@ -1,5 +1,8 @@
 package cat.daisy.menu
 
+import org.bukkit.Material
+import org.bukkit.inventory.ItemStack
+
 /**
  * Runtime pagination helpers for page-aware menu content.
  */
@@ -66,9 +69,58 @@ public class PaginationScope internal constructor(
         index: Int,
         block: SlotBuilder.() -> Unit,
     ) {
-        val builder = SlotBuilder()
+        pageSlots[index] = SlotBuilder().apply(block).build()
+    }
+
+    public fun previousButton(
+        index: Int,
+        block: SlotBuilder.() -> Unit = {},
+    ) {
+        if (!hasPrevious()) {
+            return
+        }
+        pageSlots[index] = navigationButton("&cPrevious", block) { previousPage() }
+    }
+
+    public fun nextButton(
+        index: Int,
+        block: SlotBuilder.() -> Unit = {},
+    ) {
+        if (!hasNext()) {
+            return
+        }
+        pageSlots[index] = navigationButton("&aNext", block) { nextPage() }
+    }
+
+    public fun pageLabel(
+        index: Int,
+        block: (currentPage: Int, totalPages: Int) -> ItemStack,
+    ) {
+        pageSlots[index] =
+            SlotBuilder()
+                .apply {
+                    render {
+                        block(currentPage + 1, totalPages)
+                    }
+                }.build()
+    }
+
+    private fun navigationButton(
+        defaultName: String,
+        block: SlotBuilder.() -> Unit,
+        action: suspend MenuClickContext.() -> Unit,
+    ): SlotDefinition {
+        val builder =
+            SlotBuilder().apply {
+                item(Material.ARROW) {
+                    name = defaultName
+                }
+            }
         builder.apply(block)
-        pageSlots[index] = builder.build()
+        if (!builder.hasClickBindings()) {
+            builder.onClick(action)
+        }
+        return builder.build()
     }
 }
 

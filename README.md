@@ -1,29 +1,59 @@
 # DaisyMenu
 
-DaisyMenu is a Kotlin-first menu library for Paper.
+Kotlin-first menus for Paper `1.21.11` with reusable definitions, per-player sessions, strict top-inventory ownership, and a DSL that stays small even as menus get more dynamic.
 
-It focuses on a small, clean API:
+[![Version](https://img.shields.io/badge/version-2.0.0-1f7a8c)](https://github.com/DaisyCatTs/DaisyMenu)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.3.20-7f52ff)](https://kotlinlang.org/)
+[![Paper](https://img.shields.io/badge/paper-1.21.11-ffffff?logo=paper)](https://papermc.io/)
+[![CI](https://img.shields.io/github/actions/workflow/status/DaisyCatTs/DaisyMenu/ci.yml?branch=main&label=build)](https://github.com/DaisyCatTs/DaisyMenu/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-0f172a)](LICENSE)
 
-- immutable menu definitions
-- per-viewer menu sessions
-- safe top-inventory handling
-- dynamic slot rendering
-- suspendable click and lifecycle hooks
-- pagination helpers that stay inside the DSL
+## Why DaisyMenu
+
+DaisyMenu is built around a simple idea: the cleanest API should also be the safe one. Menus are immutable definitions, every viewer gets an isolated runtime session, dynamic content is explicit, pagination stays inside the DSL, and item transfer edge cases are blocked by default so plugin authors do not have to rebuild inventory safety from scratch.
+
+```kotlin
+val menu =
+    menu("Skyblock Menu", rows = 3) {
+        template {
+            border { name = " " }
+        }
+
+        slot(13) {
+            item(Material.GRASS_BLOCK) {
+                name = "Your Island"
+            }
+
+            onClick {
+                player.sendMessage("Open island menu")
+            }
+        }
+    }
+
+player.openMenu(menu)
+```
 
 ## Features
 
-- `menu(title, rows) { ... }` builder for reusable menu definitions
-- `Player.openMenu(menu)` and `Player.openMenu(title, rows) { ... }`
-- `slot`, `fill`, `fillRow`, `fillColumn`, `fillBorder`, and `pattern`
-- `MenuSession` runtime API with `close()`, `invalidate()`, and `refreshEvery(...)`
-- dynamic slots via `render { ... }`
-- pagination via `pagination(itemsPerPage) { ... }`
-- `onOpen` and `onClose` lifecycle callbacks
-- anvil text input utilities
-- Paper/Adventure component titles and MiniMessage-backed item text
+| Feature | What it gives you |
+| --- | --- |
+| Immutable menu definitions | Build once and safely open for many players |
+| Per-viewer sessions | Independent page state, refresh tasks, and lifecycle callbacks |
+| Dynamic slot rendering | `render { ... }` with diff-based updates and targeted invalidation |
+| Strict inventory ownership | Top inventory clicks, drags, and transfer-style actions are blocked before handlers run |
+| Kotlin-first click DSL | `onClick`, filtered click helpers, `closeOnClick`, and `invalidateOnClick` |
+| Pagination helpers | `pageItems`, `previousButton`, `nextButton`, `pageLabel`, and session page navigation |
+| Template helpers | `border`, `corners`, `content`, and `navBar` for fast layout scaffolding |
+| Anvil input utility | Secondary text-input helper that uses Paper's real anvil view |
+| Test coverage | MockBukkit-backed tests for rendering, lifecycle, pagination, and inventory safety rules |
 
 ## Installation
+
+### Requirements
+
+- Java `21`
+- Paper `1.21.11`
+- Kotlin `2.3.20`
 
 ### Gradle Kotlin DSL
 
@@ -34,7 +64,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.fu3i0n:DaisyMenu:1.1.0")
+    implementation("com.github.DaisyCatTs:DaisyMenu:2.0.0")
 }
 ```
 
@@ -47,7 +77,7 @@ repositories {
 }
 
 dependencies {
-    implementation "com.github.fu3i0n:DaisyMenu:1.1.0"
+    implementation "com.github.DaisyCatTs:DaisyMenu:2.0.0"
 }
 ```
 
@@ -73,6 +103,7 @@ class MyPlugin : JavaPlugin() {
 ## Quick Start
 
 ```kotlin
+import cat.daisy.menu.item
 import cat.daisy.menu.menu
 import cat.daisy.menu.openMenu
 import org.bukkit.Material
@@ -81,15 +112,17 @@ import org.bukkit.entity.Player
 fun openSkyblockMenu(player: Player) {
     player.openMenu(
         menu("Skyblock Menu", rows = 3) {
-            fill { name = " " }
+            template {
+                border { name = " " }
+            }
 
             slot(13) {
-                item = cat.daisy.menu.item(Material.GRASS_BLOCK) {
+                item = item(Material.GRASS_BLOCK) {
                     name = "Your Island"
                 }
 
-                onClick { viewer, _ ->
-                    viewer.sendPlainMessage("Open island menu")
+                onClick {
+                    player.sendMessage("Open island menu")
                 }
             }
         },
@@ -99,19 +132,19 @@ fun openSkyblockMenu(player: Player) {
 
 ## Usage Patterns
 
-### Static layout
+### Reusable menu definition
 
 ```kotlin
 val shopMenu =
     menu("Shop", rows = 3) {
-        fillBorder(Material.GRAY_STAINED_GLASS_PANE) {
-            name = " "
+        template {
+            border { name = " " }
         }
 
         slot(11) {
             item(Material.DIAMOND) {
                 name = "&bDiamond"
-                lore("&7Price: &a100")
+                lore("&7Price: &a100 coins")
             }
         }
 
@@ -119,59 +152,59 @@ val shopMenu =
             item(Material.BARRIER) {
                 name = "&cClose"
             }
-
-            val closeHandler: suspend MenuClickContext.() -> Unit = {
-                close()
-            }
-            onClick(closeHandler)
+            closeOnClick()
         }
     }
+
+player.openMenu(shopMenu)
 ```
 
-### Dynamic content with `invalidate()`
+### Dynamic content with targeted invalidation
 
 ```kotlin
+import cat.daisy.menu.item
+
 fun openCounter(player: Player) {
     var counter = 0
-    var session: MenuSession? = null
 
-    session =
-        player.openMenu(
-            menu("Counter", rows = 1) {
-                slot(4) {
-                    render {
-                        cat.daisy.menu.item(Material.PAPER) {
-                            name = "Count: $counter"
-                        }
+    player.openMenu(
+        menu("Counter", rows = 1) {
+            slot(4) {
+                render {
+                    item(Material.PAPER) {
+                        name = "Count: $counter"
                     }
                 }
+            }
 
-                slot(6) {
-                    item(Material.EMERALD) {
-                        name = "Increment"
-                    }
-
-                    onClick { _, _ ->
-                        counter++
-                        session?.invalidate(4)
-                    }
+            slot(6) {
+                item(Material.EMERALD) {
+                    name = "Increment"
                 }
-            },
-        )
+
+                onClick {
+                    counter++
+                    invalidate(4)
+                }
+            }
+        },
+    )
 }
 ```
 
-### Session-level refresh loop
+### Session refresh loop
 
 ```kotlin
+import cat.daisy.menu.item
+
 fun openStatus(player: Player) {
     val session =
         player.openMenu(
-            menu("Server Status", rows = 1) {
+            menu("Status", rows = 1) {
                 slot(4) {
                     render {
-                        cat.daisy.menu.item(Material.CLOCK) {
-                            name = "Players: ${player.server.onlinePlayers.size}"
+                        item(Material.CLOCK) {
+                            name = "Online: ${player.server.onlinePlayers.size}"
                         }
                     }
                 }
@@ -184,14 +217,16 @@ fun openStatus(player: Player) {
 }
 ```
 
-### Slot-level refresh loop
+### Slot refresh loop
 
 ```kotlin
+import cat.daisy.menu.item
+
 player.openMenu(
     menu("Clock", rows = 1) {
         slot(4) {
             render {
-                cat.daisy.menu.item(Material.CLOCK) {
+                item(Material.CLOCK) {
                     name = "Tick: ${player.server.currentTick}"
                 }
             }
@@ -201,19 +236,16 @@ player.openMenu(
 )
 ```
 
-### Pagination
+### Pagination with built-in navigation helpers
 
 ```kotlin
 fun openPagedList(player: Player, values: List<String>) {
     player.openMenu(
-        menu("Paged List", rows = 6) {
-            fill { name = " " }
-
-            pagination(itemsPerPage = 45) {
-                val pageValues = pageItems(values)
+        menu("Paged List", rows = 2) {
+            pagination(itemsPerPage = 7) {
                 pageCount(values.size)
 
-                pageValues.forEachIndexed { index, value ->
+                pageItems(values).forEachIndexed { index, value ->
                     slot(index) {
                         item(Material.PAPER) {
                             name = value
@@ -221,28 +253,58 @@ fun openPagedList(player: Player, values: List<String>) {
                     }
                 }
 
-                if (hasPrevious()) {
-                    slot(45) {
-                        item(Material.ARROW) { name = "Previous" }
-                        val previousHandler: suspend MenuClickContext.() -> Unit = {
-                            previousPage()
-                        }
-                        onClick(previousHandler)
+                previousButton(15)
+                pageLabel(16) { currentPage, totalPages ->
+                    cat.daisy.menu.item(Material.BOOK) {
+                        name = "Page $currentPage/$totalPages"
                     }
                 }
+                nextButton(17)
+            }
+        },
+    )
+}
+```
 
-                if (hasNext()) {
-                    slot(53) {
-                        item(Material.ARROW) { name = "Next" }
-                        val nextHandler: suspend MenuClickContext.() -> Unit = {
-                            nextPage()
-                        }
-                        onClick(nextHandler)
-                    }
+### Template helpers
+
+```kotlin
+fun openTemplateMenu(player: Player) {
+    player.openMenu(
+        menu("Template", rows = 6) {
+            template {
+                border { name = " " }
+                content(10..43)
+                navBar(6) {
+                    previous()
+                    pageLabel()
+                    next()
                 }
             }
         },
     )
+}
+```
+
+### Click filters
+
+```kotlin
+slot(13) {
+    item(Material.STONE_BUTTON) {
+        name = "Actions"
+    }
+
+    onShiftClick {
+        player.sendMessage("Shift click")
+    }
+
+    onLeftClick {
+        player.sendMessage("Left click")
+    }
+
+    onDropClick {
+        close()
+    }
 }
 ```
 
@@ -252,11 +314,11 @@ fun openPagedList(player: Player, values: List<String>) {
 player.openMenu(
     menu("Lifecycle", rows = 1) {
         onOpen { session ->
-            session.player.sendPlainMessage("Menu opened")
+            session.player.sendMessage("Menu opened")
         }
 
         onClose { session ->
-            session.player.sendPlainMessage("Menu closed")
+            session.player.sendMessage("Menu closed")
         }
     },
 )
@@ -268,20 +330,21 @@ player.openMenu(
 import cat.daisy.menu.openAnvil
 
 suspend fun askForName(player: Player) {
-    val result = player.openAnvil(
-        title = "&eRename Item",
-        placeholder = "&7Enter a name",
-    )
+    val result =
+        player.openAnvil(
+            title = "&eRename Item",
+            placeholder = "&7Enter a name",
+        )
 
     if (result != null) {
-        player.sendPlainMessage("You entered: $result")
+        player.sendMessage("You entered: $result")
     }
 }
 ```
 
 ## API Overview
 
-### Build menus
+### Core entrypoints
 
 ```kotlin
 fun menu(title: String, rows: Int = 3, block: MenuBuilder.() -> Unit): Menu
@@ -294,12 +357,15 @@ fun Player.openMenu(title: String, rows: Int = 3, block: MenuBuilder.() -> Unit)
 ```kotlin
 val player: Player
 val menu: Menu
+val inventory: Inventory
 val currentPage: Int
 
 fun close()
 fun invalidate()
 fun invalidate(slot: Int)
+fun invalidate(vararg slots: Int)
 fun refreshEvery(ticks: Long, block: suspend MenuSession.() -> Unit): Cancellable
+fun hasOpenInventory(): Boolean
 ```
 
 ### `SlotBuilder`
@@ -308,54 +374,75 @@ fun refreshEvery(ticks: Long, block: suspend MenuSession.() -> Unit): Cancellabl
 var item: ItemStack?
 
 fun item(material: Material, block: ItemBuilder.() -> Unit = {})
-fun render(block: MenuRenderContext.() -> ItemStack)
+fun render(block: MenuRenderContext.() -> ItemStack?)
 fun refreshEvery(ticks: Long)
+
 fun onClick(handler: suspend MenuClickContext.() -> Unit)
-fun onClick(handler: suspend (Player) -> Unit)
+fun onPlayerClick(handler: suspend Player.() -> Unit)
 fun onClick(handler: suspend (Player, ClickType) -> Unit)
+
+fun onLeftClick(handler: suspend MenuClickContext.() -> Unit)
+fun onRightClick(handler: suspend MenuClickContext.() -> Unit)
+fun onShiftClick(handler: suspend MenuClickContext.() -> Unit)
+fun onMiddleClick(handler: suspend MenuClickContext.() -> Unit)
+fun onDropClick(handler: suspend MenuClickContext.() -> Unit)
+
+fun closeOnClick()
+fun invalidateOnClick(vararg slots: Int)
 ```
 
 ### `PaginationScope`
 
 ```kotlin
 val currentPage: Int
+val itemsPerPage: Int
 
 fun pageCount(totalItems: Int): Int
 fun pageRange(totalItems: Int): IntRange
 fun <T> pageItems(items: List<T>): List<T>
+
 fun hasPrevious(): Boolean
 fun hasNext(): Boolean
 suspend fun previousPage()
 suspend fun nextPage()
+
+fun previousButton(index: Int, block: SlotBuilder.() -> Unit = {})
+fun nextButton(index: Int, block: SlotBuilder.() -> Unit = {})
+fun pageLabel(index: Int, block: (currentPage: Int, totalPages: Int) -> ItemStack)
 ```
 
 ## Safety Notes
 
 DaisyMenu treats the top inventory as menu-owned and read-only.
 
-- clicks in the top inventory are cancelled before handlers run
-- drags touching the top inventory are cancelled
-- shift-click / collect-to-cursor style transfers into the menu are blocked
-- bottom-inventory clicks that stay in the player inventory remain allowed
+- Top inventory clicks are cancelled before DaisyMenu runs your handlers.
+- Drags touching any top slot are cancelled.
+- Transfer-style actions such as shift-click, collect-to-cursor, and hotbar move-and-readd are blocked when a menu is open.
+- Bottom-inventory clicks that stay entirely inside the player's inventory remain allowed.
+- Sessions do not force cursor clearing or silently drop items on close.
 
-This keeps the menu layer simple: layout and behavior live in the DSL, inventory mutation stays under DaisyMenu control.
+The goal is straightforward: plugin authors write layout and behavior, DaisyMenu owns the fragile inventory rules.
 
-## Testing
+## Testing and Quality
 
-The library includes automated coverage for:
+The repository includes MockBukkit-backed tests for:
 
 - builder validation
-- reusable menu definitions with independent sessions
+- reusable menu definitions with isolated sessions
 - cloned item safety
-- click routing and lifecycle order
-- bottom-inventory interaction rules
+- click filter ordering
+- dynamic `render {}` updates and `null` clears
+- inventory transfer blocking
 - drag cancellation
-- pagination changes and page clamping
+- pagination helper behavior and page clamping
 - refresh-task cleanup
-- dynamic slot invalidation
 
-Run the suite with:
+Run the full verification locally with:
 
 ```powershell
-.\gradlew.bat test
+.\gradlew.bat build
 ```
+
+## Stability
+
+DaisyMenu `2.0.0` targets Paper `1.21.11` and is intentionally Kotlin-first. This release is a clean API break from the earlier menu DSL in order to make the safe, modern path the easiest one to write and maintain.

@@ -2,6 +2,7 @@ package cat.daisy.menu
 
 import be.seeseemelk.mockbukkit.MockBukkit
 import be.seeseemelk.mockbukkit.ServerMock
+import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Material
 import org.bukkit.inventory.ItemStack
@@ -50,10 +51,15 @@ class MenuBuilderTest {
     }
 
     @Test
-    fun `pattern width is validated`() {
+    fun `pattern size is validated`() {
         assertFailsWith<IllegalArgumentException> {
             menu("Pattern", rows = 1) {
                 pattern("1234567890") {}
+            }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            menu("Pattern", rows = 1) {
+                pattern("123", "456") {}
             }
         }
     }
@@ -65,6 +71,18 @@ class MenuBuilderTest {
                 slot(0) {
                     item = ItemStack(Material.STONE)
                     refreshEvery(20)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `template content validates reserved slots`() {
+        assertFailsWith<IllegalArgumentException> {
+            menu("Template", rows = 1) {
+                template {
+                    border()
+                    content(0..10)
                 }
             }
         }
@@ -129,10 +147,7 @@ class MenuBuilderTest {
             }
 
         val meta = original.itemMeta
-        meta.displayName(
-            net.kyori.adventure.text.Component
-                .text("Mutated"),
-        )
+        meta.displayName(Component.text("Mutated"))
         original.itemMeta = meta
 
         val player = server.addPlayer()

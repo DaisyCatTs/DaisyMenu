@@ -208,9 +208,23 @@ public fun button(
     Button(
         SlotDefinition(
             item = itemStack,
-            clickHandler = onClick,
+            clickBindings =
+                onClick?.let { action ->
+                    listOf(MenuClickBinding({ true }, action))
+                } ?: emptyList(),
         ),
     )
+
+public fun button(
+    material: Material,
+    block: ItemBuilder.() -> Unit = {},
+    onClick: suspend MenuClickContext.() -> Unit,
+): Button = button(item(material, block), onMenuClick(onClick))
+
+public fun button(
+    itemStack: ItemStack,
+    onClick: suspend MenuClickContext.() -> Unit,
+): Button = button(itemStack, onMenuClick(onClick))
 
 public fun button(
     material: Material,
