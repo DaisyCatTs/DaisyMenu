@@ -18,6 +18,7 @@ public class PaginationBuilder(
 ) {
     public var currentPage: Int = 0
     public var totalPages: Int = 1
+    internal var pageChangeAction: (suspend (Int) -> Unit)? = null
     private var previousAction: (suspend () -> Unit)? = null
     private var nextAction: (suspend () -> Unit)? = null
 
@@ -69,6 +70,7 @@ public class PaginationBuilder(
     public suspend fun prevPage() {
         if (currentPage > 0) {
             currentPage--
+            pageChangeAction?.invoke(currentPage)
             previousAction?.invoke()
         }
     }
@@ -79,6 +81,7 @@ public class PaginationBuilder(
     public suspend fun nextPage() {
         if (currentPage < totalPages - 1) {
             currentPage++
+            pageChangeAction?.invoke(currentPage)
             nextAction?.invoke()
         }
     }
