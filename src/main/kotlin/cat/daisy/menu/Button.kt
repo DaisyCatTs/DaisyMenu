@@ -239,7 +239,6 @@ public class ItemBuilder(
             meta.addItemFlags(*flags.toTypedArray())
         }
 
-        // Skull owner
         if (material == Material.PLAYER_HEAD && skullOwner != null && meta is SkullMeta) {
             meta.owningPlayer = org.bukkit.Bukkit.getOfflinePlayer(skullOwner!!)
         }
